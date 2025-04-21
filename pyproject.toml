@@ -1,0 +1,38 @@
+[project]
+name = "historify"
+version = "0.1.0"
+description = "A tool for revision-safe logging of file changes"
+authors = [
+    {name = "Kevin Bortis", email = "kevin@bortis.ch"}
+]
+license = {text = "MIT"}
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "click>=8.1.7",
+    "configparser>=7.1.0",
+    "blake3>=0.3.4"
+]
+
+[project.scripts]
+historify = "historify.cli:main"
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry]
+packages = [{include = "historify", from = "src"}]
+
+[tool.poetry.group.dev]
+optional = true
+
+[tool.poetry.group.dev.dependencies]
+pytest = ">=8.3.3"
+black = ">=24.10.0"
+flake8 = ">=7.1.1"
+
+[tool.pytest.ini_options]
+minversion = "6.0"
+addopts = "-v"
+testpaths = ["tests"]
