@@ -1,10 +1,14 @@
 import csv
 import os
+import logging
 from pathlib import Path
 from datetime import datetime, UTC
 from typing import Optional, Dict, List
 from historify.tools import get_blake3_hash
 from historify.config import ConfigError
+
+# Configure logging
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
 class LogManager:
     """Manage historify transaction logs."""
@@ -102,6 +106,8 @@ class LogManager:
                 writer.writeheader()
             writer.writerow(row)
         
+        logging.debug(f"Wrote transaction to {log_file}: {row}")
+        
         # Provide signing instructions (except for closing_db)
         if transaction_type != "closing_db":
             print(f"Transaction logged to {log_file}. Sign manually with:")
@@ -137,4 +143,53 @@ class LogManager:
             for row in reader:
                 transactions.append(row)
         
+        logging.debug(f"Read {len(transactions)} transactions from {log_path}")
         return transactions
+
+    def close_log(self, log_file: str):
+        """
+        Finalize a monthly log with a closing_log transaction.
+
+        Args:
+            log_file: Path to the log file to close.
+
+        Raises:
+            ConfigError: If the log file is invalid.
+        """
+        log_path = Path(log_file)
+        if not log_path.is_file():
+            raise ConfigError(f"Log file does not exist: {log_path}")
+        
+        log_hash = get_blake3_hash(str(log_path))
+        self.write_transaction(
+            transaction_type="closing_log",
+            metadata={"log_hash": log_hash}
+        )
+        logging.debug(f"Closed log {log_path} with hash: {log_hash}")
+
+    def validate_hash_chain(self, log_file: str) -> bool:
+        """
+        Validate the hash chain in a log file.
+
+        Args:
+            log_file: Path to the log file.
+
+        Returns:
+            True if the hash chain is valid, False otherwise.
+        """
+        transactions = self.read_log(log_file)
+        if not transactions:
+            logging.debug(f"No transactions in {log_file}, hash chain valid by default")
+            return True
+        
+        # Check if closing_log matches the log file's hash
+        closing_log = next((t for t in transactions if t["transaction_type"] == "closing_log"), None)
+        if closing_log:
+            log_hash = get_blake3_hash(str(Path(log_file)))
+            expected_hash = closing_log["metadata"].split("log_hash=")[1] if "log_hash=" in closing_log["metadata"] else ""
+            if log_hash != expected_hash:
+                logging.error(f"Hash chain invalid: closing_log hash {expected_hash} does not match log hash {log_hash}")
+                return False
+            logging.debug(f"Hash chain valid: closing_log hash matches {log_hash}")
+        
+        return True
