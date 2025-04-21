@@ -5,7 +5,7 @@ import tempfile
 import os
 from pathlib import Path
 import csv
-from datetime import datetime
+from datetime import datetime, UTC
 from click.testing import CliRunner
 
 def test_init(tmp_path):
@@ -20,6 +20,8 @@ def test_init(tmp_path):
     
     assert result.exit_code == 0
     assert f"Initialized repository '{repo_name}' in {repo_path}" in result.output
+    assert f"Seed file created at {repo_path}/.historify/seed.bin" in result.output
+    assert "Sign manually with:" in result.output
     
     # Verify .historify/config
     config = HistorifyConfig(repo_name=repo_name, repo_path=str(repo_path))
@@ -32,11 +34,8 @@ def test_init(tmp_path):
     assert seed_file.exists()
     assert seed_file.stat().st_size == 1024 * 1024  # 1MB
     
-    # Skip signature checks until Step 7
-    # assert (repo_path / ".historify/seed.bin.minisig").exists()
-    
     # Verify transaction log
-    log_file = repo_path / f"translog-{datetime.utcnow().strftime('%Y-%m')}.csv"
+    log_file = repo_path / f"translog-{datetime.now(UTC).strftime('%Y-%m')}.csv"
     assert log_file.exists()
     with log_file.open("r") as f:
         reader = csv.reader(f)
@@ -46,6 +45,3 @@ def test_init(tmp_path):
         assert rows[1][1] == "config"
         assert rows[2][1] == "seed"
         assert rows[2][2] == get_blake3_hash(str(seed_file))
-    
-    # Skip log signature check
-    # assert (log_file.with_suffix(".csv.minisig")).exists()

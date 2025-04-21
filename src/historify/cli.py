@@ -1,10 +1,10 @@
 import click
 from historify.config import HistorifyConfig, ConfigError
-from historify.tools import get_blake3_hash, minisign_sign, minisign_verify
+from historify.tools import get_blake3_hash, minisign_verify
 import os
 import secrets
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, UTC
 import csv
 
 @click.group()
@@ -43,53 +43,49 @@ def init(directory, name):
         # Compute seed hash
         seed_hash = get_blake3_hash(str(seed_file))
         
-        # Skip minisign key generation and signing until Step 7
-        # key_file = historify_dir / "test.key"
-        # pubkey_file = historify_dir / "test.pub"
-        # os.system(f"minisign -G -p {pubkey_file} -s {key_file}")
-        # sig_path = minisign_sign(str(seed_file), str(key_file))
-        
         # Create initial transaction log
-        log_file = repo_path / f"translog-{datetime.utcnow().strftime('%Y-%m')}.csv"
+        log_file = repo_path / f"translog-{datetime.now(UTC).strftime('%Y-%m')}.csv"
         with log_file.open("w", newline='') as f:
             writer = csv.writer(f)
             writer.writerow(["timestamp", "transaction_type", "hash", "path", "metadata"])
             writer.writerow([
-                datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC"),
+                datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S UTC"),
                 "config",
                 "",
                 "",
                 f"hash_algorithm=blake3,random_source=/dev/urandom,tools.b3sum=/usr/bin/b3sum,tools.minisign=/usr/bin/minisign"
             ])
             writer.writerow([
-                datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC"),
+                datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S UTC"),
                 "seed",
                 seed_hash,
                 str(seed_file.relative_to(repo_path)),
                 ""
             ])
         
-        # Skip log signing
-        # minisign_sign(str(log_file), str(key_file))
-        
         click.echo(f"Initialized repository '{repo_name}' in {repo_path}")
+        click.echo(f"Seed file created at {seed_file}. Sign manually with:")
+        click.echo(f"  minisign -Sm {seed_file} -s <private_key>")
+        click.echo(f"Transaction log created at {log_file}. Sign manually with:")
+        click.echo(f"  minisign -Sm {log_file} -s <private_key>")
+        click.echo("Generate a key pair if needed:")
+        click.echo("  minisign -G -p <public_key> -s <private_key>")
     except (ConfigError, FileNotFoundError) as e:
         click.echo(f"Error: {e}", err=True)
         raise click.Abort()
 
 @main.command()
-@click.argument("key")
-@click.argument("value")
-@click.option("--scope", type=click.Choice(['global', 'user', 'local']), default='local',
-              help="Configuration scope (global, user, local)")
-def config(key, value, scope):
-    """Set configuration values."""
+@click.argument("log-file")
+def sign(log_file):
+    """Instruct user to sign a file with minisign."""
     try:
-        repo_name = HistorifyConfig().get_default_repo()
-        config = HistorifyConfig(repo_name=repo_name, repo_path='.' if scope == 'local' else None)
-        section = f"repo.{repo_name}" if repo_name and scope == 'local' else 'DEFAULT'
-        config.set(key, value, section=section, scope=scope)
-        click.echo(f"Set {key} = {value} in {scope} scope")
+        log_path = Path(log_file).resolve()
+        if not log_path.is_file():
+            raise ConfigError(f"File does not exist: {log_path}")
+        
+        click.echo(f"Sign the file manually with:")
+        click.echo(f"  minisign -Sm {log_path} -s <private_key>")
+        click.echo(f"Signature will be saved as {log_path}.minisig")
     except ConfigError as e:
         click.echo(f"Error: {e}", err=True)
         raise click.Abort()
@@ -122,11 +118,5 @@ def verify():
     """Verify the integrity of the hash chain and SQLite database."""
     click.echo("Verifying integrity")
 
-@main.command()
-def sign():
-    """Sign a monthly CSV log with a minisign-compatible signature."""
-    click.echo("Signing log")
-
 if __name__ == "__main__":
     main()
-

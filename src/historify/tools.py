@@ -1,13 +1,11 @@
 import subprocess
 import os
 from pathlib import Path
-
+from typing import Optional
 
 class ToolError(Exception):
     """Custom exception for tool-related errors."""
-
     pass
-
 
 def get_blake3_hash(file_path: str, tool_path: str = "b3sum") -> str:
     """
@@ -15,7 +13,7 @@ def get_blake3_hash(file_path: str, tool_path: str = "b3sum") -> str:
 
     Args:
         file_path: Path to the file.
-        tool_path: Path to the b3sum binary (default: "b3sum", resolved via PATH).
+        tool_path: Path to the b3sum binary (default: "b3sum").
 
     Returns:
         The Blake3 hash as a lowercase hexadecimal string.
@@ -32,7 +30,7 @@ def get_blake3_hash(file_path: str, tool_path: str = "b3sum") -> str:
             [tool_path, "--no-names", str(file_path)],
             capture_output=True,
             text=True,
-            check=True,
+            check=True
         )
         return result.stdout.strip()
     except FileNotFoundError:
@@ -40,47 +38,7 @@ def get_blake3_hash(file_path: str, tool_path: str = "b3sum") -> str:
     except subprocess.CalledProcessError as e:
         raise ToolError(f"Failed to compute Blake3 hash: {e.stderr}")
 
-
-def minisign_sign(file_path: str, key_path: str, tool_path: str = "minisign") -> str:
-    """
-    Sign a file with minisign.
-
-    Args:
-        file_path: Path to the file to sign.
-        key_path: Path to the minisign private key.
-        tool_path: Path to the minisign binary (default: "minisign").
-
-    Returns:
-        Path to the signature file (*.minisig).
-
-    Raises:
-        ToolError: If the tool fails, file/key doesn't exist, or command errors.
-    """
-    file_path = Path(file_path)
-    key_path = Path(key_path)
-    if not file_path.is_file():
-        raise ToolError(f"File does not exist: {file_path}")
-    if not key_path.is_file():
-        raise ToolError(f"Key file does not exist: {key_path}")
-
-    sig_path = f"{file_path}.minisig"
-    try:
-        subprocess.run(
-            [tool_path, "-Sm", str(file_path), "-s", str(key_path)],
-            capture_output=True,
-            text=True,
-            check=True,
-        )
-        return sig_path
-    except FileNotFoundError:
-        raise ToolError(f"Minisign tool not found: {tool_path}")
-    except subprocess.CalledProcessError as e:
-        raise ToolError(f"Failed to sign file: {e.stderr}")
-
-
-def minisign_verify(
-    file_path: str, pubkey_path: str, tool_path: str = "minisign"
-) -> bool:
+def minisign_verify(file_path: str, pubkey_path: str, tool_path: str = "minisign") -> bool:
     """
     Verify a minisign signature.
 
@@ -110,7 +68,7 @@ def minisign_verify(
             [tool_path, "-V", "-p", str(pubkey_path), "-m", str(file_path)],
             capture_output=True,
             text=True,
-            check=True,
+            check=True
         )
         return True
     except FileNotFoundError:
