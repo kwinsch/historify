@@ -2,6 +2,7 @@ import click
 from historify.config import HistorifyConfig, ConfigError
 from historify.tools import get_blake3_hash, minisign_verify
 from historify.log import LogManager
+from historify.db import DatabaseManager
 import os
 import secrets
 from pathlib import Path
@@ -36,10 +37,17 @@ def init(directory, name):
         config.set("tools.b3sum", "/usr/bin/b3sum", section=f"repo.{repo_name}", scope="local")
         config.set("tools.minisign", "/usr/bin/minisign", section=f"repo.{repo_name}", scope="local")
         
+        # Initialize database
+        db_manager = DatabaseManager(str(repo_path))
+        db_manager.initialize()
+        
         # Generate seed
         seed_file = historify_dir / "seed.bin"
         with seed_file.open("wb") as f:
             f.write(secrets.token_bytes(1024 * 1024))  # 1MB random data
+        
+        # Add seed to database
+        db_manager.add_file(str(seed_file))
         
         # Initialize log manager
         log_manager = LogManager(str(repo_path))
@@ -121,10 +129,28 @@ def comment(message, repo_path):
         raise click.Abort()
 
 @main.command()
-def verify():
+@click.argument("repo-path", default=".")
+def verify(repo_path):
     """Verify the integrity of the hash chain and SQLite database."""
-    click.echo("Verifying integrity")
+    try:
+        db_manager = DatabaseManager(repo_path)
+        issues = db_manager.verify_integrity()
+        
+        if issues:
+            click.echo("Integrity issues found:")
+            for file_hash, path in issues:
+                click.echo(f"Hash: {file_hash}, Path: {path} (missing or mismatched)")
+        else:
+            click.echo("Database integrity verified successfully.")
+        
+        log_manager = LogManager(repo_path)
+        log_manager.write_transaction(transaction_type="verify")
+    except ConfigError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise click.Abort()
+    finally:
+        db_manager.close()
+        log_manager.write_transaction(transaction_type="closing_db")
 
 if __name__ == "__main__":
     main()
-    

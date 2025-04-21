@@ -76,7 +76,6 @@ class LogManager:
                     "ctime": datetime.fromtimestamp(stat.st_ctime).strftime("%Y-%m-%dT%H:%M:%S"),
                     "mtime": datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%dT%H:%M:%S"),
                     "blake3": file_hash
-                    # Add sha256 if needed later
                 })
         
         # Format metadata as string
@@ -103,9 +102,10 @@ class LogManager:
                 writer.writeheader()
             writer.writerow(row)
         
-        # Provide signing instructions
-        print(f"Transaction logged to {log_file}. Sign manually with:")
-        print(f"  minisign -Sm {log_file} -s <private_key>")
+        # Provide signing instructions (except for closing_db)
+        if transaction_type != "closing_db":
+            print(f"Transaction logged to {log_file}. Sign manually with:")
+            print(f"  minisign -Sm {log_file} -s <private_key>")
 
     def read_log(self, log_file: Optional[str] = None) -> List[Dict[str, str]]:
         """
