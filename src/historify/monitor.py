@@ -23,8 +23,11 @@ class FileMonitor:
         try:
             self.db_manager._connect()
             self.db_manager.cursor.execute("SELECT hash, path FROM files")
-            self.known_files = {file_hash: path for file_hash, path in self.db_manager.cursor.fetchall()}
-            logging.debug(f"Loaded known files: {self.known_files}")
+            for file_hash, path in self.db_manager.cursor.fetchall():
+                # Filter out internal repository files
+                if not path.startswith('.historify/'):
+                    self.known_files[file_hash] = path
+            logging.debug(f"Loaded known files (filtered): {self.known_files}")
         except sqlite3.Error as e:
             raise ConfigError(f"Failed to load known files: {e}")
         finally:
@@ -63,11 +66,11 @@ class FileMonitor:
             for root, _, files in os.walk(dir_path):
                 for file_name in files:
                     file_path = Path(root) / file_name
-                    # Store paths relative to repo_path for consistency
+                    # Store paths relative to repo_path when possible
                     try:
                         rel_path = str(file_path.relative_to(self.repo_path))
                     except ValueError:
-                        # If file_path is outside repo_path, use absolute path
+                        # Use absolute path if outside repo_path
                         rel_path = str(file_path)
                     file_hash = get_blake3_hash(str(file_path))
                     current_files.add(rel_path)
