@@ -1,92 +1,77 @@
 import configparser
 import os
 from pathlib import Path
-from typing import Optional, List
 
 class ConfigError(Exception):
     """Custom exception for configuration errors."""
     pass
 
 class HistorifyConfig:
-    """Manage historify configuration across global, user, and local files."""
-    
-    def __init__(self, repo_name: Optional[str] = None, repo_path: Optional[str] = None):
-        self.config = configparser.ConfigParser()
-        self.global_config = Path("/etc/historify/historify.conf")
-        self.user_config = Path.home() / ".historify.conf"
-        self.local_config = Path(repo_path) / ".historify/config" if repo_path else None
+    """Manage historify configuration."""
+
+    def __init__(self, repo_name: str = None, repo_path: str = None):
         self.repo_name = repo_name
-        self.load_configs()
+        self.repo_path = repo_path
+        self.global_config = configparser.ConfigParser()
+        self.local_config = configparser.ConfigParser()
+        self.global_config.read(os.path.expanduser("~/.historify/config"))
+        if repo_path:
+            self.local_config.read(os.path.join(repo_path, ".historify/config"))
 
-    def load_configs(self):
-        """Load configuration files in order: global, user, local."""
-        files = [self.global_config, self.user_config]
-        if self.local_config:
-            files.append(self.local_config)
-        
-        existing_files = [f for f in files if f.exists()]
-        if existing_files:
-            self.config.read(existing_files)
-        else:
-            self.config['DEFAULT'] = {}
-
-    def get(self, key: str, section: str = 'DEFAULT') -> Optional[str]:
-        """Get a configuration value."""
-        # Check repo-specific section if repo_name is provided
-        if self.repo_name and section == 'DEFAULT':
-            repo_section = f"repo.{self.repo_name}"
-            if repo_section in self.config:
-                try:
-                    return self.config.get(repo_section, key)
-                except configparser.NoOptionError:
-                    pass
-        try:
-            return self.config.get(section, key)
-        except (configparser.NoSectionError, configparser.NoOptionError):
-            return None
-
-    def set(self, key: str, value: str, section: str = 'DEFAULT', scope: str = 'local'):
+    def set(self, option: str, value: str, section: str, scope: str = "local"):
         """
-        Set a configuration value in the specified scope.
+        Set a configuration option.
 
         Args:
-            key: Configuration key (e.g., 'hash_algorithm').
-            value: Configuration value (e.g., 'blake3').
-            section: Config section (e.g., 'DEFAULT', 'repo.invoices').
-            scope: Where to store ('global', 'user', 'local').
+            option: Configuration option name.
+            value: Value to set.
+            section: Configuration section (e.g., 'repo.<name>').
+            scope: 'global' or 'local'.
+
+        Raises:
+            ConfigError: If scope is invalid or write fails.
         """
-        if scope == 'local' and not self.local_config:
-            raise ConfigError("Local configuration requires a repository path")
-        
-        if section not in self.config:
-            self.config[section] = {}
-        
-        self.config[section][key] = value
-        
-        config_file = {
-            'global': self.global_config,
-            'user': self.user_config,
-            'local': self.local_config
-        }.get(scope)
-        
-        if not config_file:
+        if scope not in ["global", "local"]:
             raise ConfigError(f"Invalid scope: {scope}")
-        
-        config_file.parent.mkdir(parents=True, exist_ok=True)
-        
+
+        config = self.global_config if scope == "global" else self.local_config
+        if section not in config:
+            config[section] = {}
+        config[section][option] = value
+
         try:
-            with config_file.open('w') as f:
-                self.config.write(f)
-        except PermissionError:
-            raise ConfigError(f"Permission denied writing to {config_file}")
+            if scope == "global":
+                os.makedirs(os.path.expanduser("~/.historify"), exist_ok=True)
+                with open(os.path.expanduser("~/.historify/config"), "w") as f:
+                    self.global_config.write(f)
+            else:
+                if not self.repo_path:
+                    raise ConfigError("Repository path required for local config")
+                os.makedirs(os.path.join(self.repo_path, ".historify"), exist_ok=True)
+                with open(os.path.join(self.repo_path, ".historify/config"), "w") as f:
+                    self.local_config.write(f)
         except OSError as e:
-            raise ConfigError(f"Failed to write configuration: {e}")
+            raise ConfigError(f"Failed to write config: {e}")
 
-    def get_repositories(self) -> List[str]:
-        """Get list of repository names from configuration."""
-        return [section.replace('repo.', '') for section in self.config.sections() if section.startswith('repo.')]
+    def get(self, option: str, section: str, default: str = None) -> str:
+        """
+        Get a configuration option.
 
-    def get_default_repo(self) -> Optional[str]:
-        """Return the default repository name if only one exists."""
-        repos = self.get_repositories()
-        return repos[0] if len(repos) == 1 else None
+        Args:
+            option: Configuration option name.
+            section: Configuration section (e.g., 'repo.<name>').
+            default: Default value if option or section is missing.
+
+        Returns:
+            The option value or default if not found.
+
+        Raises:
+            ConfigError: If neither local nor global config contains the option and no default is provided.
+        """
+        if self.local_config.has_option(section, option):
+            return self.local_config[section][option]
+        if self.global_config.has_option(section, option):
+            return self.global_config[section][option]
+        if default is not None:
+            return default
+        raise ConfigError(f"Option {option} not found in section {section}")
