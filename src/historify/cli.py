@@ -1,6 +1,7 @@
 import click
 from historify.config import HistorifyConfig, ConfigError
 from historify.tools import get_blake3_hash, minisign_verify
+from historify.log import LogManager
 import os
 import secrets
 from pathlib import Path
@@ -40,36 +41,27 @@ def init(directory, name):
         with seed_file.open("wb") as f:
             f.write(secrets.token_bytes(1024 * 1024))  # 1MB random data
         
-        # Compute seed hash
-        seed_hash = get_blake3_hash(str(seed_file))
+        # Initialize log manager
+        log_manager = LogManager(str(repo_path))
         
-        # Create initial transaction log
-        log_file = repo_path / f"translog-{datetime.now(UTC).strftime('%Y-%m')}.csv"
-        with log_file.open("w", newline='') as f:
-            writer = csv.writer(f)
-            writer.writerow(["timestamp", "transaction_type", "hash", "path", "metadata"])
-            writer.writerow([
-                datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S UTC"),
-                "config",
-                "",
-                "",
-                f"hash_algorithm=blake3,random_source=/dev/urandom,tools.b3sum=/usr/bin/b3sum,tools.minisign=/usr/bin/minisign"
-            ])
-            writer.writerow([
-                datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S UTC"),
-                "seed",
-                seed_hash,
-                str(seed_file.relative_to(repo_path)),
-                ""
-            ])
+        # Log config transaction
+        log_manager.write_transaction(
+            transaction_type="config",
+            metadata={
+                "hash_algorithm": "blake3",
+                "random_source": "/dev/urandom",
+                "tools.b3sum": "/usr/bin/b3sum",
+                "tools.minisign": "/usr/bin/minisign"
+            }
+        )
+        
+        # Log seed transaction
+        log_manager.write_transaction(
+            transaction_type="seed",
+            file_path=str(seed_file.relative_to(repo_path))
+        )
         
         click.echo(f"Initialized repository '{repo_name}' in {repo_path}")
-        click.echo(f"Seed file created at {seed_file}. Sign manually with:")
-        click.echo(f"  minisign -Sm {seed_file} -s <private_key>")
-        click.echo(f"Transaction log created at {log_file}. Sign manually with:")
-        click.echo(f"  minisign -Sm {log_file} -s <private_key>")
-        click.echo("Generate a key pair if needed:")
-        click.echo("  minisign -G -p <public_key> -s <private_key>")
     except (ConfigError, FileNotFoundError) as e:
         click.echo(f"Error: {e}", err=True)
         raise click.Abort()
@@ -103,15 +95,30 @@ def status():
     click.echo("Repository status")
 
 @main.command()
-def log():
+@click.argument("repo-path", default=".")
+def log(repo_path):
     """Show the current month's transaction log."""
-    click.echo("Current month's log")
+    try:
+        log_manager = LogManager(repo_path)
+        transactions = log_manager.read_log()
+        for t in transactions:
+            click.echo(f"{t['timestamp']} {t['transaction_type']} {t['path']} {t['hash']} {t['metadata']}")
+    except ConfigError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise click.Abort()
 
 @main.command()
 @click.argument("message")
-def comment(message):
+@click.argument("repo-path", default=".")
+def comment(message, repo_path):
     """Add an administrative comment."""
-    click.echo(f"Adding comment: {message}")
+    try:
+        log_manager = LogManager(repo_path)
+        log_manager.write_transaction(transaction_type="comment", metadata={"message": message})
+        click.echo(f"Added comment: {message}")
+    except ConfigError as e:
+        click.echo(f"Error: {e}", err=True)
+        raise click.Abort()
 
 @main.command()
 def verify():
@@ -120,3 +127,4 @@ def verify():
 
 if __name__ == "__main__":
     main()
+    

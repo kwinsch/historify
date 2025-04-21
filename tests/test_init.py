@@ -20,8 +20,7 @@ def test_init(tmp_path):
     
     assert result.exit_code == 0
     assert f"Initialized repository '{repo_name}' in {repo_path}" in result.output
-    assert f"Seed file created at {repo_path}/.historify/seed.bin" in result.output
-    assert "Sign manually with:" in result.output
+    assert f"Transaction logged to {repo_path}/translog-" in result.output
     
     # Verify .historify/config
     config = HistorifyConfig(repo_name=repo_name, repo_path=str(repo_path))
@@ -38,10 +37,11 @@ def test_init(tmp_path):
     log_file = repo_path / f"translog-{datetime.now(UTC).strftime('%Y-%m')}.csv"
     assert log_file.exists()
     with log_file.open("r") as f:
-        reader = csv.reader(f)
+        reader = csv.DictReader(f)
         rows = list(reader)
-        assert len(rows) >= 3  # Header + config + seed
-        assert rows[0] == ["timestamp", "transaction_type", "hash", "path", "metadata"]
-        assert rows[1][1] == "config"
-        assert rows[2][1] == "seed"
-        assert rows[2][2] == get_blake3_hash(str(seed_file))
+        assert len(rows) >= 2  # config + seed
+        assert rows[0]["transaction_type"] == "config"
+        assert "hash_algorithm=blake3" in rows[0]["metadata"]
+        assert rows[1]["transaction_type"] == "seed"
+        assert rows[1]["path"] == ".historify/seed.bin"
+        assert rows[1]["hash"] == get_blake3_hash(str(seed_file))
