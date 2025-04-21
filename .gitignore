@@ -8,3 +8,9 @@ build/
 *.csv
 *.bin
 *.minisig
+# Ignore production minisign keys
+.historify/historify.key
+.historify/historify.pub
+# Allow test fixtures
+!tests/fixtures/historify.key
+!tests/fixtures/historify.pub
