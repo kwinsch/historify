@@ -35,7 +35,7 @@ class FileMonitor:
         Scan data directories for changes.
 
         Args:
-            data_dirs: List of relative paths to data directories.
+            data_dirs: List of relative or absolute paths to data directories.
 
         Returns:
             List of transactions (type, path, hash, metadata).
@@ -48,15 +48,27 @@ class FileMonitor:
         
         # Scan data directories
         for data_dir in data_dirs:
-            dir_path = self.repo_path / data_dir
+            # Handle relative or absolute paths
+            if Path(data_dir).is_absolute():
+                dir_path = Path(data_dir)
+            else:
+                dir_path = self.repo_path / data_dir
+            
             if not dir_path.is_dir():
                 logging.debug(f"Skipping non-existent directory: {dir_path}")
                 continue
             
+            logging.debug(f"Scanning directory: {dir_path}")
+            
             for root, _, files in os.walk(dir_path):
                 for file_name in files:
                     file_path = Path(root) / file_name
-                    rel_path = str(file_path.relative_to(self.repo_path))
+                    # Store paths relative to repo_path for consistency
+                    try:
+                        rel_path = str(file_path.relative_to(self.repo_path))
+                    except ValueError:
+                        # If file_path is outside repo_path, use absolute path
+                        rel_path = str(file_path)
                     file_hash = get_blake3_hash(str(file_path))
                     current_files.add(rel_path)
                     logging.debug(f"Scanning file: {rel_path}, hash: {file_hash}")

@@ -194,10 +194,31 @@ def scan(repo_path):
         
         if not data_dirs:
             click.echo("No data directories configured. Set repo.<name>.data_dir or repo.<name>.categories.<catname>.")
+            logging.debug("No data directories found in configuration")
             return
         
+        # Validate data directories
+        valid_dirs = []
+        for data_dir in data_dirs:
+            dir_path = repo_path / data_dir
+            if dir_path.is_dir():
+                valid_dirs.append(data_dir)
+            else:
+                click.echo(f"Warning: Data directory {dir_path} does not exist and will be skipped.")
+                logging.debug(f"Skipping non-existent data directory: {dir_path}")
+        
+        if not valid_dirs:
+            click.echo("No valid data directories found. Please create the configured directories.")
+            logging.debug("No valid data directories available for scanning")
+            return
+        
+        logging.debug(f"Scanning valid data directories: {valid_dirs}")
+        
         # Scan for changes
-        transactions = monitor.scan(data_dirs)
+        transactions = monitor.scan(valid_dirs)
+        if not transactions:
+            click.echo("No file changes detected.")
+            logging.debug("No transactions generated during scan")
         for t in transactions:
             log_manager.write_transaction(
                 transaction_type=t["type"],
@@ -208,6 +229,7 @@ def scan(repo_path):
         
     except ConfigError as e:
         click.echo(f"Error: {e}", err=True)
+        logging.error(f"Scan failed: {e}")
         raise click.Abort()
 
 @main.command()
@@ -226,9 +248,15 @@ def config(scope, key, value, repo_path):
         if len(parts) < 2:
             raise ConfigError("Key must be in format section.key or repo.<name>.key")
         
-        section, option = parts[0], parts[-1]
-        if section != "repo":
-            section = f"repo.{parts[1]}" if len(parts) > 2 else section
+        if parts[0] == "repo" and len(parts) == 3:
+            # Repository-specific key, e.g., repo.test.data_dir
+            repo_name = parts[1]
+            section = f"repo.{repo_name}"
+            option = parts[2]
+        else:
+            # General section, e.g., global settings
+            section = parts[0]
+            option = parts[1]
         
         config.set(option, value, section=section, scope=scope)
         click.echo(f"Set {key} = {value} in {scope} configuration")
