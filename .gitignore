@@ -14,3 +14,10 @@ build/
 # Allow test fixtures
 !tests/fixtures/historify.key
 !tests/fixtures/historify.pub
+!tests/fixtures/encrypted_minisign.key
+!tests/fixtures/encrypted_minisign.pub
+!tests/fixtures/unencrypted_minisign.key
+!tests/fixtures/unencrypted_minisign.pub
+# Dissallow all other keys
+*.key
+*.pub
