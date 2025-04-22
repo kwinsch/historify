@@ -406,3 +406,55 @@ class Changelog:
             logger.error(f"Database error: {e}")
             # Re-raise so caller can handle
             raise
+
+    def write_comment(self, message: str) -> bool:
+        """
+        Write a comment transaction to the current changelog.
+        
+        Args:
+            message: Comment text to add to the changelog.
+            
+        Returns:
+            True if the comment was written successfully.
+            
+        Raises:
+            ChangelogError: If there is no open changelog or writing fails.
+        """
+        # Get the current changelog
+        changelog_file = self.get_current_changelog()
+        if not changelog_file:
+            raise ChangelogError("No open changelog file. Run 'start' command first.")
+        
+        # Prepare the transaction
+        timestamp = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S UTC")
+        transaction = {
+            "timestamp": timestamp,
+            "transaction_type": "comment",
+            "path": "",
+            "category": "",
+            "size": "",
+            "ctime": "",
+            "mtime": "",
+            "sha256": "",
+            "blake3": message  # Store the comment in the blake3 field
+        }
+        
+        # Write the transaction to the changelog
+        try:
+            with open(changelog_file, "a", newline="") as f:
+                writer = csv.DictWriter(f, fieldnames=self.required_fields)
+                writer.writerow(transaction)
+            
+            logger.info(f"Wrote comment to {changelog_file}: {message}")
+            
+            # Record transaction in the database
+            try:
+                self._record_transaction_in_db(transaction)
+            except Exception as e:
+                logger.error(f"Database error: {e}")
+                # Continue even if database update fails
+            
+            return True
+            
+        except (IOError, OSError) as e:
+            raise ChangelogError(f"Failed to write comment: {e}")

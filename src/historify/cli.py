@@ -9,6 +9,7 @@ from pathlib import Path
 from historify.cli_init import handle_init_command
 from historify.cli_config import handle_config_command
 from historify.cli_config import handle_check_config_command
+from historify.cli_comment import handle_comment_command
 
 
 # Configure logging
@@ -167,8 +168,7 @@ def comment(message, repo_path):
     
     Useful for documenting important events or changes.
     """
-    click.echo(f"Adding comment to {repo_path}: {message}")
-    # Placeholder for actual implementation
+    handle_comment_command(repo_path, message)
 
 @cli.command()
 @click.argument("output_path", type=click.Path(), required=True)
