@@ -1,17 +1,18 @@
 [project]
 name = "historify"
-version = "0.1.0"
+version = "0.1.1"
 description = "A tool for revision-safe logging of file changes"
 authors = [
     {name = "Kevin Bortis", email = "kevin@bortis.ch"}
 ]
 license = {text = "MIT"}
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.13"
 dependencies = [
     "click>=8.1.7",
     "configparser>=7.1.0",
-    "blake3>=0.3.4"
+    "blake3>=0.3.4",
+    "pexpect>=4.9.0"
 ]
 keywords = ["versioning", "changelog", "integrity", "cryptography"]
 classifiers = [
@@ -19,7 +20,7 @@ classifiers = [
     "Intended Audience :: System Administrators",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.13",
     "Topic :: System :: Archiving",
     "Topic :: System :: Logging",
 ]
