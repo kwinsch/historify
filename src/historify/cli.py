@@ -12,6 +12,7 @@ from historify.cli_comment import handle_comment_command
 from historify.cli_log import handle_log_command
 from historify.cli_lifecycle import handle_start_command, handle_closing_command
 from historify.cli_scan import cli_scan_command  # Add this import
+from historify.cli_category import handle_add_category_command  # Add this import
 
 
 # Configure logging
@@ -76,8 +77,7 @@ def add_category(category_name, data_path, repo_path):
     The DATA_PATH can be a relative path within the repository or an absolute path
     to an external location.
     """
-    click.echo(f"Adding category '{category_name}' with path '{data_path}' to {repo_path}")
-    # Placeholder for actual implementation
+    handle_add_category_command(repo_path, category_name, data_path)
 
 @cli.command("start")
 @click.argument("repo_path", type=click.Path(exists=True), default=".")
