@@ -136,10 +136,10 @@ class Changelog:
         Args:
             file_path: Path to the file to sign.
             password: Optional password for the minisign key.
-            
+                
         Returns:
             True if signing succeeded.
-            
+                
         Raises:
             ChangelogError: If signing fails or minisign keys are not configured.
         """
@@ -155,6 +155,15 @@ class Changelog:
                 first_line = f.readline()
                 # Keys with 'encrypted' in the comment are encrypted
                 unencrypted = "encrypted" not in first_line.lower()
+            
+            # Log appropriate message about password usage
+            if not unencrypted and password is None:
+                logger.warning("Attempting to sign with encrypted key but no password provided")
+                logger.info("Note: You can set HISTORIFY_PASSWORD environment variable")
+            elif not unencrypted and password is not None:
+                logger.debug("Using provided password for encrypted key")
+            elif unencrypted:
+                logger.debug("Using unencrypted key - no password needed")
             
             result = minisign_sign(
                 str(file_path),

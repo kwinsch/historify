@@ -90,7 +90,7 @@ class TestLifecycleImplementation:
         changelog_files = list(self.test_repo_path.glob("changes/changelog-*.csv"))
         assert len(changelog_files) == 1
         
-        # Verify minisign was called with the seed file (don't check unencrypted parameter)
+        # Verify minisign was called with the seed file
         assert mock_sign.call_count == 1
         args, kwargs = mock_sign.call_args
         assert str(self.test_repo_path / "db" / "seed.bin") in args
@@ -160,7 +160,8 @@ class TestLifecycleImplementation:
             mock_write.assert_called()
     
     @patch('historify.cli_lifecycle.Changelog')
-    def test_cli_start_command(self, mock_changelog_class):
+    @patch('logging.Logger.warning')
+    def test_cli_start_command(self, mock_warning, mock_changelog_class):
         """Test CLI start command."""
         # Set up mock
         mock_changelog = MagicMock()
@@ -176,20 +177,33 @@ class TestLifecycleImplementation:
             with open("repo_dir/db/cache.db", "w") as f:
                 f.write("mock db file")
             
-            # Run start command
-            result = self.runner.invoke(start_transaction, ["repo_dir"])
+            # Temporarily remove HISTORIFY_PASSWORD from environment if it exists
+            old_env = os.environ.get("HISTORIFY_PASSWORD")
+            if "HISTORIFY_PASSWORD" in os.environ:
+                del os.environ["HISTORIFY_PASSWORD"]
             
-            assert result.exit_code == 0
-            assert "Starting new transaction period" in result.output
-            assert "Success" in result.output
-            
-            # Verify the changelog method was called
-            mock_changelog_class.assert_called_once()
-            mock_changelog.start_closing.assert_called_once()
+            try:
+                # Run start command
+                result = self.runner.invoke(start_transaction, ["repo_dir"])
+                
+                assert result.exit_code == 0
+                assert "Starting new transaction period" in result.output
+                assert "Success" in result.output
+                
+                # Verify warning about ENV var was logged
+                mock_warning.assert_called_once()
+                
+                # Verify the changelog method was called
+                mock_changelog_class.assert_called_once()
+                mock_changelog.start_closing.assert_called_once_with(None)
+            finally:
+                # Restore environment
+                if old_env is not None:
+                    os.environ["HISTORIFY_PASSWORD"] = old_env
     
     @patch('historify.cli_lifecycle.Changelog')
-    def test_cli_start_with_password(self, mock_changelog_class):
-        """Test CLI start command with explicit password."""
+    def test_cli_start_with_env_password(self, mock_changelog_class):
+        """Test CLI start command with password from environment variable."""
         # Set up mock
         mock_changelog = MagicMock()
         mock_changelog.start_closing.return_value = (True, "Success message")
@@ -204,18 +218,30 @@ class TestLifecycleImplementation:
             with open("repo_dir/db/cache.db", "w") as f:
                 f.write("mock db file")
             
-            # Run start command with password
-            result = self.runner.invoke(start_transaction, ["repo_dir", "--password", "test123"])
+            # Set environment variable
+            old_env = os.environ.get("HISTORIFY_PASSWORD")
+            os.environ["HISTORIFY_PASSWORD"] = "test123"
             
-            assert result.exit_code == 0
-            assert "Success" in result.output
-            
-            # Verify the changelog method was called with the password
-            mock_changelog_class.assert_called_once()
-            mock_changelog.start_closing.assert_called_once_with("test123")
+            try:
+                # Run start command
+                result = self.runner.invoke(start_transaction, ["repo_dir"])
+                
+                assert result.exit_code == 0
+                assert "Success" in result.output
+                
+                # Verify the changelog method was called with the password from env
+                mock_changelog_class.assert_called_once()
+                mock_changelog.start_closing.assert_called_once_with("test123")
+            finally:
+                # Restore original environment
+                if old_env is not None:
+                    os.environ["HISTORIFY_PASSWORD"] = old_env
+                else:
+                    os.environ.pop("HISTORIFY_PASSWORD", None)
     
     @patch('historify.cli_lifecycle.Changelog')
-    def test_cli_closing_command(self, mock_changelog_class):
+    @patch('logging.Logger.warning')
+    def test_cli_closing_command(self, mock_warning, mock_changelog_class):
         """Test CLI closing command."""
         # Set up mock
         mock_changelog = MagicMock()
@@ -231,12 +257,25 @@ class TestLifecycleImplementation:
             with open("repo_dir/db/cache.db", "w") as f:
                 f.write("mock db file")
             
-            # Run closing command
-            result = self.runner.invoke(closing, ["repo_dir"])
+            # Temporarily remove HISTORIFY_PASSWORD from environment if it exists
+            old_env = os.environ.get("HISTORIFY_PASSWORD")
+            if "HISTORIFY_PASSWORD" in os.environ:
+                del os.environ["HISTORIFY_PASSWORD"]
             
-            assert result.exit_code == 0
-            assert "Success" in result.output
-            
-            # Verify the changelog method was called
-            mock_changelog_class.assert_called_once()
-            mock_changelog.start_closing.assert_called_once()
+            try:
+                # Run closing command
+                result = self.runner.invoke(closing, ["repo_dir"])
+                
+                assert result.exit_code == 0
+                assert "Success" in result.output
+                
+                # Verify warning about ENV var was logged
+                mock_warning.assert_called_once()
+                
+                # Verify the changelog method was called
+                mock_changelog_class.assert_called_once()
+                mock_changelog.start_closing.assert_called_once_with(None)
+            finally:
+                # Restore environment
+                if old_env is not None:
+                    os.environ["HISTORIFY_PASSWORD"] = old_env

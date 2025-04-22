@@ -2,14 +2,14 @@
 Implementation of lifecycle commands (start, closing) for historify.
 """
 import logging
-import getpass
+import os
 import click
 from pathlib import Path
 from historify.changelog import Changelog, ChangelogError
 
 logger = logging.getLogger(__name__)
 
-def handle_start_command(repo_path: str, password: str = None) -> None:
+def handle_start_command(repo_path: str) -> None:
     """
     Handle the start command from the CLI.
     
@@ -17,20 +17,18 @@ def handle_start_command(repo_path: str, password: str = None) -> None:
     
     Args:
         repo_path: Path to the repository.
-        password: Optional password for the minisign key.
     """
     try:
         repo_path = Path(repo_path).resolve()
         changelog = Changelog(str(repo_path))
         
-        # Check if password is needed but not provided
+        # Get password from environment variable
+        password = os.environ.get("HISTORIFY_PASSWORD")
+        
+        # If the key exists and no password is provided, issue a warning
         if password is None and changelog.minisign_key:
-            # Check if the key appears to be encrypted
-            with open(changelog.minisign_key, "r") as f:
-                first_line = f.readline()
-                # Keys with 'encrypted' in the comment are encrypted
-                if "encrypted" in first_line.lower():
-                    password = getpass.getpass("Minisign key password: ")
+            logger.warning("HISTORIFY_PASSWORD environment variable not set. "
+                         "If an encrypted key is used, signing might fail.")
         
         # Start a new period
         click.echo(f"Starting new transaction period in {repo_path}")
@@ -46,7 +44,7 @@ def handle_start_command(repo_path: str, password: str = None) -> None:
         click.echo(f"Error: {e}", err=True)
         raise click.Abort()
 
-def handle_closing_command(repo_path: str, password: str = None) -> None:
+def handle_closing_command(repo_path: str) -> None:
     """
     Handle the closing command from the CLI.
     
@@ -54,7 +52,6 @@ def handle_closing_command(repo_path: str, password: str = None) -> None:
     
     Args:
         repo_path: Path to the repository.
-        password: Optional password for the minisign key.
     """
     # The closing command is functionally the same as start
-    handle_start_command(repo_path, password)
+    handle_start_command(repo_path)
