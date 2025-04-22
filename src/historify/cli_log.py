@@ -147,13 +147,7 @@ def display_log_entry(num: int, entry: Dict[str, str]) -> None:
         if entry.get("category"):
             click.echo(f"Category: {entry.get('category')}")
     
-    elif entry_type == "duplicate":
-        click.echo(f"Duplicate path: {entry.get('path', 'None')}")
-        if entry.get("category"):
-            click.echo(f"Category: {entry.get('category')}")
-        # Original path might be stored in metadata or blake3 field
-        if entry.get("blake3") and "/" in entry.get("blake3", ""):
-            click.echo(f"Original path: {entry.get('blake3')}")
+    # "duplicate" type removed - now handled by the 'duplicates' command
     
     elif entry_type == "config":
         click.echo(f"Setting: {entry.get('path', 'None')}")

@@ -40,7 +40,10 @@ A historify repository contains:
 : Signs the `db/seed.bin` in case of a new repo or the latest `db/changelog-YYYY-MM-DD.csv` file. On successful signing, the first|next `db/changelog-YYYY-MM-DD.csv` file is created. The command issues an implicit prior `verify`. A new file can not be created without prior closing (signing) the last open file. Logs a `closing` transaction to the new changelog with the hash of the last seed or changelog file, closing the chain. The signature is placed in the same folder as the original file with a `.minisig` extension.
 
 **scan** [*repo_path*]
-: Scan the repository's data categories for file changes. Logs changes (`new`, `move`, `deleted`, `duplicate`) with cryptographic hashes to the latest open changelog file, where a file can produce multiple changelog entries (e.g. `new` and `duplicate`).
+: Scan the repository's data categories for file changes. Logs changes (`new`, `move`, `deleted`) with cryptographic hashes to the latest open changelog file.
+
+**duplicates** [*repo_path*] [`--category` *category*]
+: Find and display duplicate files in the repository based on hash values. Groups identical files together and shows information about size and potential wasted space. Can be filtered by category.
 
 **verify** [*repo_path*] [`--full-chain`]
 : Verify the integrity of change logs. By default, verifies from the latest signed changelog forward. With `--full-chain`, verifies the entire chain of logs including available signatures. Checks signatures and hash chain integrity. Implies a prior implicit `check-config`. Rebuilds the integrity CSV automatically if a corruption is detected from the full-chain.
@@ -60,13 +63,13 @@ A historify repository contains:
 ## OPTIONS
 
 `--category` *category*
-: Filter operations by category.
+: Filter operations by category. Used with `scan`, `status`, `log`, and `duplicates` commands.
 
 `--full-chain`
 : Verify the entire change log chain (with `verify` command).
 
 `--file` *log_file*
-: Specify a particular change log file for operations.
+: Specify a particular change log file for operations (with `log` command).
 
 ## CONFIGURATION
 Historify's configuration controls repository behavior:
@@ -86,9 +89,11 @@ At least one category must be configured for each repository to define what data
 Change logs (`changes/changelog-YYYY-MM-DD.csv`) record file events with the following fields:
 
 - `timestamp`: UTC timestamp with timezone (e.g., `2025-04-21 12:00:00 UTC`)
-- `changelog_types`: Event type (`closing`, `move`, `deleted`, `duplicate`, `config`, `comment`, `verify`)
+- `changelog_types`: Event type (`closing`, `move`, `deleted`, `new`, `config`, `comment`, `verify`)
 - `path`: Relative file path within the category
 - `size`, `ctime`, `mtime`, `sha256`, `blake3`: Metadata attributes
+
+Duplicate files are not marked specifically in the changelog. Use the `duplicates` command to find files with identical content based on their hash values.
 
 ## INTEGRITY VERIFICATION
 
@@ -176,19 +181,29 @@ historify closing /path/to/project
 historify start /path/to/project
 ```
 
-Create an archive snapshot:
-```bash
-historify snapshot /backup/project-2025-04-21.tar.gz /path/to/project
-```
-
 View change history for a specific category:
 ```bash
 historify log --category source-code /path/to/project
 ```
 
+Find duplicate files in the repository:
+```bash
+historify duplicates /path/to/project
+```
+
+Find duplicate files in a specific category:
+```bash
+historify duplicates --category source-code /path/to/project
+```
+
 Verify the integrity of the entire change chain:
 ```bash
 historify verify --full-chain /path/to/project
+```
+
+Create an archive snapshot:
+```bash
+historify snapshot /backup/project-2025-04-21.tar.gz /path/to/project
 ```
 
 ## FILES

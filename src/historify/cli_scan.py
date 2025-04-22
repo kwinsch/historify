@@ -70,6 +70,10 @@ def scan_category(repo_path: Path, category: str, category_path: Path, changelog
         
     Raises:
         ScanError: If scanning fails.
+        
+    Note:
+        Duplicates are not marked separately in the changelog but can be 
+        identified using the 'duplicates' command which compares hash values.
     """
     if not category_path.exists():
         raise ScanError(f"Category path does not exist: {category_path}")
@@ -86,7 +90,6 @@ def scan_category(repo_path: Path, category: str, category_path: Path, changelog
         "unchanged": 0,
         "deleted": 0,
         "moved": 0,
-        "duplicate": 0,
         "error": 0
     }
     
@@ -135,7 +138,7 @@ def scan_category(repo_path: Path, category: str, category_path: Path, changelog
                 "blake3": metadata["blake3"]
             }
             
-            # TODO: Implement logic to detect file modifications, moves, duplicates
+            # TODO: Implement logic to detect file modifications, moves, etc.
             # For now, just log as new
             
             # Write entry to changelog

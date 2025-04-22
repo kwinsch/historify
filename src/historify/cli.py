@@ -11,8 +11,9 @@ from historify.cli_config import handle_config_command, handle_check_config_comm
 from historify.cli_comment import handle_comment_command
 from historify.cli_log import handle_log_command
 from historify.cli_lifecycle import handle_start_command, handle_closing_command
-from historify.cli_scan import cli_scan_command  # Add this import
-from historify.cli_category import handle_add_category_command  # Add this import
+from historify.cli_scan import cli_scan_command
+from historify.cli_category import handle_add_category_command
+from historify.cli_duplicates import handle_duplicates_command
 
 
 # Configure logging
@@ -108,10 +109,11 @@ def scan(repo_path, category):
     """
     Scan the repository's data categories for file changes.
     
-    Logs changes (new, move, deleted, duplicate) with cryptographic hashes
-    to the latest open changelog file.
+    Logs changes (new, move, deleted) with cryptographic hashes
+    to the latest open changelog file. Use the 'duplicates' command
+    to identify files with identical content.
     """
-    cli_scan_command(repo_path, category)  # Change this line to directly call the function
+    cli_scan_command(repo_path, category)
 
 @cli.command()
 @click.argument("repo_path", type=click.Path(exists=True), default=".")
@@ -163,6 +165,18 @@ def comment(message, repo_path):
     Useful for documenting important events or changes.
     """
     handle_comment_command(repo_path, message)
+
+@cli.command()
+@click.argument("repo_path", type=click.Path(exists=True), default=".")
+@click.option("--category", help="Filter duplicates to specific category")
+def duplicates(repo_path, category):
+    """
+    Find and display duplicate files in the repository.
+    
+    Identifies files with identical content (same hash) and displays them
+    grouped by hash value with information about size and wasted space.
+    """
+    handle_duplicates_command(repo_path, category)
 
 @cli.command()
 @click.argument("output_path", type=click.Path(), required=True)
