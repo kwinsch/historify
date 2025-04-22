@@ -7,9 +7,10 @@ import os
 import logging
 from pathlib import Path
 from historify.cli_init import handle_init_command
-from historify.cli_config import handle_config_command
-from historify.cli_config import handle_check_config_command
+from historify.cli_config import handle_config_command, handle_check_config_command
 from historify.cli_comment import handle_comment_command
+from historify.cli_log import handle_log_command
+from historify.cli_lifecycle import handle_start_command, handle_closing_command
 
 
 # Configure logging
@@ -38,7 +39,7 @@ def init(repo_path, name):
     """
     Initialize a new repository at REPO_PATH.
     
-    Creates a configuration file (db/config), SQLite database (db/cache.db),
+    Creates a configuration file (db/config), integrity CSV (db/integrity.csv),
     and random seed file (db/seed.bin) at the specified repository path.
     """
     handle_init_command(repo_path, name)
@@ -61,7 +62,6 @@ def check_config(repo_path):
     """
     Verify the configuration of the repository.
     """
-    from historify.cli_config import handle_check_config_command
     handle_check_config_command(repo_path)
 
 @cli.command()
@@ -88,7 +88,6 @@ def start_transaction(repo_path):
     On successful signing, the first/next changelog file is created.
     The command issues an implicit prior 'verify'.
     """
-    from historify.cli_lifecycle import handle_start_command
     handle_start_command(repo_path)
 
 @cli.command()
@@ -99,7 +98,6 @@ def closing(repo_path):
     
     Functionally equivalent to the 'start' command.
     """
-    from historify.cli_lifecycle import handle_closing_command
     handle_closing_command(repo_path)
 
 @cli.command()
@@ -112,9 +110,8 @@ def scan(repo_path, category):
     Logs changes (new, move, deleted, duplicate) with cryptographic hashes
     to the latest open changelog file.
     """
-    category_str = f" (category: {category})" if category else ""
-    click.echo(f"Scanning for changes in {repo_path}{category_str}")
-    # Placeholder for actual implementation
+    from historify.cli_scan import cli_scan_command
+    cli_scan_command(repo_path, category)
 
 @cli.command()
 @click.argument("repo_path", type=click.Path(exists=True), default=".")
@@ -154,7 +151,6 @@ def log(repo_path, file, category):
     By default, shows the current log. Use --file to specify a different
     changelog and --category to filter by category.
     """
-    from historify.cli_log import handle_log_command
     handle_log_command(repo_path, file, category)
 
 @cli.command()
