@@ -15,17 +15,17 @@ Historify is designed for secure tracking of files that require a high level of 
 A historify repository contains:
 
 - `db/config`: Repository configuration file
-- `db/cache.db`: SQLite database for file metadata (can be regenerated from logs)
+- `db/integrity.csv`: CSV database containing integrity verification information
 - `db/seed.bin`: Random seed file for integrity
 - `db/seed.bin.minisig`: Mandatory signature for seed
 - `changes/`: Directory containing change logs
-- `changes/changelog-YYYY-MM.csv`: Monthly change logs
-- `changes/changelog-YYYY-MM.csv.minisig`: Signature files for change logs. File created at closing event.
+- `changes/changelog-YYYY-MM-DD.csv`: Daily change logs
+- `changes/changelog-YYYY-MM-DD.csv.minisig`: Signature files for change logs. File created at closing event.
 
 ## COMMANDS
 
 **init** *repo_path*
-: Initialize a new repository at *repo_path* with name *name*. Creates a configuration file (`db/config`), SQLite database (`db/cache.db`), and random seed file (`db/seed.bin`).
+: Initialize a new repository at *repo_path* with name *name*. Creates a configuration file (`db/config`), integrity CSV (`db/integrity.csv`), and random seed file (`db/seed.bin`).
 
 **config** *key* *value* *repo_path*
 : Set a configuration *key* to *value* in the repository. Keys use `section.option` format (e.g., `category.default.path`, `hash.algorithms`, `minisign.key`). Logs a `config` transaction.
@@ -37,13 +37,13 @@ A historify repository contains:
 : Add a data category with specified path for organizing content within the repository. The *data_path* can be a relative path within the repository or an absolute path to an external location. Updates configuration and database to track the new category. At least one category must be present to start tracking files.
 
 **start|closing** [*repo_path*]
-: Signs the `db/seed.bin` in case of a new repo or the latest `db/changelog-YYYY-MM-DD.csv` file. On successfull signing, the first|next `db/changelog-YYYY-MM-DD.csv` file is created. The command issues an implicit prior `verify`. A new file can not be created without prior closing (sigining) the last open file. Logs a `closing` transaction to the new changelog with the hash of the last seed or changelog file, closing the chain. The signature is placed in the same folder as the original file with a `.minisig` extension.
+: Signs the `db/seed.bin` in case of a new repo or the latest `db/changelog-YYYY-MM-DD.csv` file. On successful signing, the first|next `db/changelog-YYYY-MM-DD.csv` file is created. The command issues an implicit prior `verify`. A new file can not be created without prior closing (signing) the last open file. Logs a `closing` transaction to the new changelog with the hash of the last seed or changelog file, closing the chain. The signature is placed in the same folder as the original file with a `.minisig` extension.
 
 **scan** [*repo_path*]
 : Scan the repository's data categories for file changes. Logs changes (`new`, `move`, `deleted`, `duplicate`) with cryptographic hashes to the latest open changelog file, where a file can produce multiple changelog entries (e.g. `new` and `duplicate`).
 
 **verify** [*repo_path*] [`--full-chain`]
-: Verify the integrity of change logs. By default, verifies from the latest signed changelog forward. With `--full-chain`, verifies the entire chain of logs including available signatures. Checks signatures and hash chain integrity. Implies a prior implicit `check-config`. Rebuids the sqlite database automatically if a corruption is detected from the full-chain.
+: Verify the integrity of change logs. By default, verifies from the latest signed changelog forward. With `--full-chain`, verifies the entire chain of logs including available signatures. Checks signatures and hash chain integrity. Implies a prior implicit `check-config`. Rebuilds the integrity CSV automatically if a corruption is detected from the full-chain.
 
 **status** [*repo_path*] [`--category` *category*]
 : Display the current repository status, showing counts of tracked files, recent changes, and signature status. Clearly indicates whether categories are internal (within repository) or external (absolute paths). If `--category` is specified, limits output to the given category.
@@ -111,6 +111,15 @@ Categories provide logical grouping of data within a repository. Each category:
 
 This allows for organizing different types of data (e.g., documents, source code, data sets, financial records) while maintaining a unified integrity verification system.
 
+## ENVIRONMENT
+
+`HISTORIFY_PASSWORD`
+: Password for encrypted minisign key. If this environment variable is set, Historify will use it for signing operations instead of prompting for a password at the command line. This is useful for automated scripts and batch operations. If the key is not encrypted, this variable is ignored.
+
+Historify relies on these external tools:
+- `minisign`: For signing and verification
+- `b3sum`: For BLAKE3 hashing (if native implementation is not available)
+
 ## EXAMPLES
 
 Initialize a repository:
@@ -152,7 +161,7 @@ historify scan --category source-code /path/to/project
 Set up automated scanning via cron:
 ```bash
 # Add to crontab to run daily at 2am
-0 2 * * * /usr/local/bin/historify scan /path/to/project
+0 2 * * * HISTORIFY_PASSWORD="mypassword" /usr/local/bin/historify scan /path/to/project
 ```
 
 Add a comment about recent activity:
@@ -187,8 +196,8 @@ historify verify --full-chain /path/to/project
 `<repo_path>/db/config`
 : Repository configuration file
 
-`<repo_path>/db/cache.db`
-: SQLite database for file metadata (can be regenerated from logs)
+`<repo_path>/db/integrity.csv`
+: CSV file containing integrity verification information
 
 `<repo_path>/db/seed.bin`
 : Random seed file for integrity
@@ -197,16 +206,10 @@ historify verify --full-chain /path/to/project
 : Signature files for seed
 
 `<repo_path>/changes/changelog-YYYY-MM-DD.csv`
-: Monthly change logs
+: Daily change logs
 
 `<repo_path>/changes/changelog-YYYY-MM-DD.csv.minisig`
 : Signature files for change logs
-
-## ENVIRONMENT
-
-Historify relies on these external tools:
-- `minisign`: For signing and verification
-- `b3sum`: For BLAKE3 hashing (if native implementation is not available)
 
 ## EXIT STATUS
 
@@ -216,7 +219,7 @@ Historify relies on these external tools:
 - **3**: Integrity error (verification failed)
 - **4**: Database error
 
-### Hash Algorithm Changes
+## Hash Algorithm Changes
 
 To update to a new hash algorithm while maintaining backward compatibility:
 ```bash
