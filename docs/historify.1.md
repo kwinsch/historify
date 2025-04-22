@@ -39,8 +39,8 @@ A historify repository contains:
 **start|closing** [*repo_path*]
 : Signs the `db/seed.bin` in case of a new repo or the latest `db/changelog-YYYY-MM-DD.csv` file. On successful signing, the first|next `db/changelog-YYYY-MM-DD.csv` file is created. The command issues an implicit prior `verify`. A new file can not be created without prior closing (signing) the last open file. Logs a `closing` transaction to the new changelog with the hash of the last seed or changelog file, closing the chain. The signature is placed in the same folder as the original file with a `.minisig` extension.
 
-**scan** [*repo_path*]
-: Scan the repository's data categories for file changes. Logs changes (`new`, `move`, `deleted`) with cryptographic hashes to the latest open changelog file.
+**scan** [*repo_path*] [`--category` *category*]
+: Scan the repository's data categories for file changes. Automatically detects and logs changes (`new`, `changed`, `move`, `deleted`) with cryptographic hashes to the latest open changelog file. The scan operation intelligently identifies new files, modified content, files that have been moved or renamed, and files that have been deleted.
 
 **duplicates** [*repo_path*] [`--category` *category*]
 : Find and display duplicate files in the repository based on hash values. Groups identical files together and shows information about size and potential wasted space. Can be filtered by category.
@@ -89,11 +89,24 @@ At least one category must be configured for each repository to define what data
 Change logs (`changes/changelog-YYYY-MM-DD.csv`) record file events with the following fields:
 
 - `timestamp`: UTC timestamp with timezone (e.g., `2025-04-21 12:00:00 UTC`)
-- `changelog_types`: Event type (`closing`, `move`, `deleted`, `new`, `config`, `comment`, `verify`)
+- `changelog_types`: Event type (`closing`, `new`, `changed`, `move`, `deleted`, `config`, `comment`, `verify`)
 - `path`: Relative file path within the category
 - `size`, `ctime`, `mtime`, `sha256`, `blake3`: Metadata attributes
 
 Duplicate files are not marked specifically in the changelog. Use the `duplicates` command to find files with identical content based on their hash values.
+
+## TRANSACTION TYPES
+
+Historify uses the following transaction types to track changes:
+
+- `new`: A file that appears for the first time in a category
+- `changed`: A file that has been modified (content changes)
+- `move`: A file that has been moved or renamed (path has changed, but content is identical)
+- `deleted`: A file that no longer exists in the category
+- `closing`: Administrative transaction that links changelogs in a chain
+- `config`: Configuration change
+- `comment`: User-added comment
+- `verify`: Verification operation
 
 ## INTEGRITY VERIFICATION
 

@@ -11,7 +11,7 @@ Historify is a command-line utility that tracks file changes in one or multiple 
 - **Secure Tracking**: Uses BLAKE3 and SHA256 hashing with minisign signatures
 - **Multiple Categories**: Organize content with logical categorization of data
 - **Integrity Verification**: Full chain verification ensures tamper-evident history
-- **Comprehensive Logging**: Tracks new files, moves, deletions, and administrative events
+- **Comprehensive Logging**: Tracks new files, modifications, moves, deletions, and administrative events
 - **Multiple Repositories**: Supports managing multiple independent repositories
 
 ## Installation
@@ -110,6 +110,17 @@ For complete documentation on all commands and options, refer to the [manual pag
 | `duplicates` | Find duplicate files |
 | `snapshot` | Create a compressed archive of the repository |
 
+## Change Detection
+
+Historify automatically detects and tracks different types of file changes:
+
+- **New Files**: Files that appear for the first time in a category
+- **Changed Files**: Modifications to existing files (content changes)
+- **Moved Files**: Files that have been renamed or moved to a different location
+- **Deleted Files**: Files that no longer exist in the category
+
+Each scan operation identifies these changes automatically and logs appropriate transactions in the changelog.
+
 ## Repository Structure
 
 ```
@@ -117,11 +128,11 @@ repository/
 ├── db/
 │   ├── config                  # Repository configuration
 │   ├── integrity.csv           # Integrity verification information
-│   └── seed.bin                # Random seed file (with .minisig signature)
-├── changes/
-│   ├── changelog-YYYY-MM-DD.csv       # Daily change logs
-│   └── changelog-YYYY-MM-DD.csv.minisig # Signatures for change logs
-└── [category-directories]/     # User-defined data categories
+│   └── seed.bin                # Random seed file 
+│   └── seed.bin.minisig        # Signature for seed
+└── changes/
+    ├── changelog-YYYY-MM-DD.csv       # Daily change logs
+    └── changelog-YYYY-MM-DD.csv.minisig # Signatures for change 
 ```
 
 ## Integrity Verification
