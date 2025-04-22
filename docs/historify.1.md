@@ -87,7 +87,6 @@ Change logs (`changes/changelog-YYYY-MM-DD.csv`) record file events with the fol
 
 - `timestamp`: UTC timestamp with timezone (e.g., `2025-04-21 12:00:00 UTC`)
 - `changelog_types`: Event type (`closing`, `move`, `deleted`, `duplicate`, `config`, `comment`, `verify`)
-- `hash`: Primary hash of the file (BLAKE3 by default)
 - `path`: Relative file path within the category
 - `size`, `ctime`, `mtime`, `sha256`, `blake3`: Metadata attributes
 

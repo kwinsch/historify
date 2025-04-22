@@ -1,269 +1,187 @@
+#!/usr/bin/env python
+"""
+Command-line interface for historify - a tool for revision-safe logging of file changes.
+"""
 import click
-from historify.config import HistorifyConfig, ConfigError
-from historify.tools import get_blake3_hash, minisign_verify
-from historify.log import LogManager
-from historify.db import DatabaseManager
-from historify.monitor import FileMonitor
 import os
-import secrets
-from pathlib import Path
-from datetime import datetime, UTC
-import csv
 import logging
+from pathlib import Path
+from historify.cli_init import handle_init_command
 
 # Configure logging
-logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 @click.group()
-@click.option("--repo", "-r", help="Specify the repository name (required for multiple repositories)")
-def main(repo):
-    """historify: Revision-safe logging of file changes."""
-    pass
+@click.option("--verbose", "-v", is_flag=True, help="Enable verbose output")
+def cli(verbose):
+    """
+    Historify: track file history with cryptographic integrity verification.
+    
+    Historify is a command-line tool for tracking file changes in a repository,
+    logging changes with cryptographic hashes (BLAKE3 and SHA256), and securing
+    logs with minisign signatures.
+    """
+    if verbose:
+        logging.getLogger().setLevel(logging.DEBUG)
+        click.echo("Verbose mode enabled")
+    logger.debug("Historify CLI starting")
 
-@main.command()
-@click.argument("directory", default=".")
+@cli.command()
+@click.argument("repo_path", type=click.Path())
 @click.option("--name", help="Repository name (defaults to directory name)")
-def init(directory, name):
-    """Initialize a new historify repository."""
-    try:
-        repo_path = Path(directory).resolve()
-        repo_name = name or repo_path.name
-        
-        # Create .historify directory
-        historify_dir = repo_path / ".historify"
-        historify_dir.mkdir(parents=True, exist_ok=True)
-        
-        # Initialize configuration
-        config = HistorifyConfig(repo_name=repo_name, repo_path=str(repo_path))
-        
-        # Set default configuration
-        config.set("hash_algorithm", "blake3", section=f"repo.{repo_name}", scope="local")
-        config.set("random_source", "/dev/urandom", section=f"repo.{repo_name}", scope="local")
-        config.set("tools.b3sum", "/usr/bin/b3sum", section=f"repo.{repo_name}", scope="local")
-        config.set("tools.minisign", "/usr/bin/minisign", section=f"repo.{repo_name}", scope="local")
-        
-        # Initialize database
-        db_manager = DatabaseManager(str(repo_path))
-        db_manager.initialize()
-        
-        # Generate seed
-        seed_file = historify_dir / "seed.bin"
-        with seed_file.open("wb") as f:
-            f.write(secrets.token_bytes(1024 * 1024))  # 1MB random data
-        
-        # Add seed to database
-        db_manager.add_file(str(seed_file))
-        
-        # Initialize log manager
-        log_manager = LogManager(str(repo_path))
-        
-        # Log config transaction
-        log_manager.write_transaction(
-            transaction_type="config",
-            metadata={
-                "hash_algorithm": "blake3",
-                "random_source": "/dev/urandom",
-                "tools.b3sum": "/usr/bin/b3sum",
-                "tools.minisign": "/usr/bin/minisign"
-            }
-        )
-        
-        # Log seed transaction
-        log_manager.write_transaction(
-            transaction_type="seed",
-            file_path=str(seed_file.relative_to(repo_path))
-        )
-        
-        click.echo(f"Initialized repository '{repo_name}' in {repo_path}")
-    except (ConfigError, FileNotFoundError) as e:
-        click.echo(f"Error: {e}", err=True)
-        raise click.Abort()
+def init(repo_path, name):
+    """
+    Initialize a new repository at REPO_PATH.
+    
+    Creates a configuration file (db/config), SQLite database (db/cache.db),
+    and random seed file (db/seed.bin) at the specified repository path.
+    """
+    handle_init_command(repo_path, name)
+    
+@cli.command()
+@click.argument("key", required=True)
+@click.argument("value", required=True)
+@click.argument("repo_path", type=click.Path(exists=True), default=".")
+def config(key, value, repo_path):
+    """
+    Set a configuration KEY to VALUE in the repository.
+    
+    Keys use section.option format (e.g., category.default.path, hash.algorithms, minisign.key).
+    """
+    click.echo(f"Setting {key}={value} in {repo_path}")
+    # Placeholder for actual implementation
 
-@main.command()
-@click.argument("log-file")
-def sign(log_file):
-    """Instruct user to sign a file with minisign."""
-    try:
-        log_path = Path(log_file).resolve()
-        if not log_path.is_file():
-            raise ConfigError(f"File does not exist: {log_path}")
-        
-        click.echo(f"Sign the file manually with:")
-        click.echo(f"  minisign -Sm {log_path} -s <private_key>")
-        click.echo(f"Signature will be saved as {log_path}.minisig")
-        logging.debug(f"Instructed manual signing for {log_path}")
-    except ConfigError as e:
-        click.echo(f"Error: {e}", err=True)
-        raise click.Abort()
+@cli.command()
+@click.argument("repo_path", type=click.Path(exists=True), default=".")
+def check_config(repo_path):
+    """
+    Verify the configuration of the repository.
+    """
+    click.echo(f"Checking configuration in {repo_path}")
+    # Placeholder for actual implementation
 
-@main.command("add-category")
-@click.argument("data-dir")
-@click.argument("category-name")
-def add_category(data_dir, category_name):
-    """Add a data directory with a category name."""
-    click.echo(f"Adding category {category_name} for {data_dir}")
+@cli.command()
+@click.argument("category_name", required=True)
+@click.argument("data_path", type=click.Path(), required=True)
+@click.argument("repo_path", type=click.Path(exists=True), default=".")
+def add_category(category_name, data_path, repo_path):
+    """
+    Add a data category with specified path for organizing content.
+    
+    The DATA_PATH can be a relative path within the repository or an absolute path
+    to an external location.
+    """
+    click.echo(f"Adding category '{category_name}' with path '{data_path}' to {repo_path}")
+    # Placeholder for actual implementation
 
-@main.command()
-def status():
-    """Display repository status."""
-    click.echo("Repository status")
+@cli.command("start")
+@click.argument("repo_path", type=click.Path(exists=True), default=".")
+def start_transaction(repo_path):
+    """
+    Sign the current state and prepare for new changes.
+    
+    Signs db/seed.bin for a new repo or the latest changelog file, then creates
+    the next changelog file.
+    """
+    click.echo(f"Starting new transaction period in {repo_path}")
+    # Placeholder for actual implementation
 
-@main.command()
-@click.argument("repo-path", default=".")
-def log(repo_path):
-    """Show the current month's transaction log."""
-    try:
-        log_manager = LogManager(repo_path)
-        transactions = log_manager.read_log()
-        for t in transactions:
-            click.echo(f"{t['timestamp']} {t['transaction_type']} {t['path']} {t['hash']} {t['metadata']}")
-    except ConfigError as e:
-        click.echo(f"Error: {e}", err=True)
-        raise click.Abort()
+@cli.command()
+@click.argument("repo_path", type=click.Path(exists=True), default=".")
+def closing(repo_path):
+    """
+    Close the current changelog and prepare for the next period.
+    
+    Functionally equivalent to the 'start' command.
+    """
+    click.echo(f"Closing current changelog in {repo_path}")
+    # Placeholder for actual implementation
 
-@main.command()
-@click.argument("message")
-@click.argument("repo-path", default=".")
+@cli.command()
+@click.argument("repo_path", type=click.Path(exists=True), default=".")
+@click.option("--category", help="Filter scan to specific category")
+def scan(repo_path, category):
+    """
+    Scan the repository's data categories for file changes.
+    
+    Logs changes (new, move, deleted, duplicate) with cryptographic hashes
+    to the latest open changelog file.
+    """
+    category_str = f" (category: {category})" if category else ""
+    click.echo(f"Scanning for changes in {repo_path}{category_str}")
+    # Placeholder for actual implementation
+
+@cli.command()
+@click.argument("repo_path", type=click.Path(exists=True), default=".")
+@click.option("--full-chain", is_flag=True, help="Verify the entire change log chain")
+def verify(repo_path, full_chain):
+    """
+    Verify the integrity of change logs.
+    
+    By default, verifies from the latest signed changelog forward.
+    With --full-chain, verifies the entire chain of logs.
+    """
+    mode = "full chain" if full_chain else "recent logs"
+    click.echo(f"Verifying {mode} in {repo_path}")
+    # Placeholder for actual implementation
+
+@cli.command()
+@click.argument("repo_path", type=click.Path(exists=True), default=".")
+@click.option("--category", help="Filter status to specific category")
+def status(repo_path, category):
+    """
+    Display the current repository status.
+    
+    Shows counts of tracked files, recent changes, and signature status.
+    """
+    category_str = f" for category '{category}'" if category else ""
+    click.echo(f"Status of {repo_path}{category_str}")
+    # Placeholder for actual implementation
+
+@cli.command()
+@click.argument("repo_path", type=click.Path(exists=True), default=".")
+@click.option("--file", help="Specify a particular change log file")
+@click.option("--category", help="Filter logs by category")
+def log(repo_path, file, category):
+    """
+    Display change history from logs.
+    
+    By default, shows the current log. Use --file to specify a different
+    changelog and --category to filter by category.
+    """
+    file_str = f" (file: {file})" if file else ""
+    category_str = f" (category: {category})" if category else ""
+    click.echo(f"Showing logs for {repo_path}{file_str}{category_str}")
+    # Placeholder for actual implementation
+
+@cli.command()
+@click.argument("message", required=True)
+@click.argument("repo_path", type=click.Path(exists=True), default=".")
 def comment(message, repo_path):
-    """Add an administrative comment."""
-    try:
-        log_manager = LogManager(repo_path)
-        log_manager.write_transaction(transaction_type="comment", metadata={"message": message})
-        click.echo(f"Added comment: {message}")
-    except ConfigError as e:
-        click.echo(f"Error: {e}", err=True)
-        raise click.Abort()
+    """
+    Add an administrative comment to the change log.
+    
+    Useful for documenting important events or changes.
+    """
+    click.echo(f"Adding comment to {repo_path}: {message}")
+    # Placeholder for actual implementation
 
-@main.command()
-@click.argument("repo-path", default=".")
-def verify(repo_path):
-    """Verify the integrity of the hash chain and SQLite database."""
-    try:
-        db_manager = DatabaseManager(repo_path)
-        log_manager = LogManager(repo_path)
-        
-        # Verify database integrity
-        issues = db_manager.verify_integrity()
-        if issues:
-            click.echo("Database integrity issues found:")
-            for file_hash, path in issues:
-                click.echo(f"Hash: {file_hash}, Path: {path} (missing or mismatched)")
-        else:
-            click.echo("Database integrity verified successfully.")
-        
-        # Verify hash chain
-        log_file = log_manager.get_current_log_file()
-        if log_manager.validate_hash_chain(str(log_file)):
-            click.echo("Hash chain verified successfully.")
-        else:
-            click.echo("Hash chain verification failed.")
-        
-        log_manager.write_transaction(transaction_type="verify")
-    except ConfigError as e:
-        click.echo(f"Error: {e}", err=True)
-        raise click.Abort()
-    finally:
-        db_manager.close()
-        log_manager.write_transaction(transaction_type="closing_db")
+@cli.command()
+@click.argument("output_path", type=click.Path(), required=True)
+@click.argument("repo_path", type=click.Path(exists=True), default=".")
+def snapshot(output_path, repo_path):
+    """
+    Create a compressed archive of the current repository state.
+    
+    Includes all data files, change logs, seed, signatures, and configuration.
+    """
+    click.echo(f"Creating snapshot from {repo_path} to {output_path}")
+    # Placeholder for actual implementation
 
-@main.command()
-@click.argument("repo-path", default=".")
-def scan(repo_path):
-    """Scan data directories for file changes."""
-    try:
-        repo_path = Path(repo_path).resolve()
-        config = HistorifyConfig(repo_name=None, repo_path=str(repo_path))
-        db_manager = DatabaseManager(str(repo_path))
-        log_manager = LogManager(str(repo_path))
-        monitor = FileMonitor(str(repo_path), db_manager)
-        
-        # Get data directories from configuration
-        data_dirs = []
-        for section in config.config.sections():
-            if section.startswith("repo."):
-                repo_name = section.split(".", 1)[1]
-                data_dir = config.get("data_dir", section)
-                if data_dir:
-                    data_dirs.append(data_dir)
-                # Add category directories
-                for key in config.config[section]:
-                    if key.startswith("categories."):
-                        category_dir = config.config[section][key]
-                        if category_dir:
-                            data_dirs.append(category_dir)
-        
-        if not data_dirs:
-            click.echo("No data directories configured. Set repo.<name>.data_dir or repo.<name>.categories.<catname>.")
-            logging.debug("No data directories found in configuration")
-            return
-        
-        # Validate data directories
-        valid_dirs = []
-        for data_dir in data_dirs:
-            dir_path = repo_path / data_dir
-            if dir_path.is_dir():
-                valid_dirs.append(data_dir)
-            else:
-                click.echo(f"Warning: Data directory {dir_path} does not exist and will be skipped.")
-                logging.debug(f"Skipping non-existent data directory: {dir_path}")
-        
-        if not valid_dirs:
-            click.echo("No valid data directories found. Please create the configured directories.")
-            logging.debug("No valid data directories available for scanning")
-            return
-        
-        logging.debug(f"Scanning valid data directories: {valid_dirs}")
-        
-        # Scan for changes
-        transactions = monitor.scan(valid_dirs)
-        if not transactions:
-            click.echo("No file changes detected.")
-            logging.debug("No transactions generated during scan")
-        for t in transactions:
-            log_manager.write_transaction(
-                transaction_type=t["type"],
-                file_path=t["path"],
-                metadata=t["metadata"]
-            )
-            click.echo(f"Logged {t['type']} transaction for {t['path']}")
-        
-    except ConfigError as e:
-        click.echo(f"Error: {e}", err=True)
-        logging.error(f"Scan failed: {e}")
-        raise click.Abort()
-
-@main.command()
-@click.option("--scope", type=click.Choice(["global", "local"]), default="local", help="Configuration scope")
-@click.argument("key")
-@click.argument("value")
-@click.argument("repo-path", default=".")
-def config(scope, key, value, repo_path):
-    """Set a configuration option."""
-    try:
-        repo_path = Path(repo_path).resolve()
-        config = HistorifyConfig(repo_name=None, repo_path=str(repo_path))
-        
-        # Parse key to determine section
-        parts = key.split(".", 2)
-        if len(parts) < 2:
-            raise ConfigError("Key must be in format section.key or repo.<name>.key")
-        
-        if parts[0] == "repo" and len(parts) == 3:
-            # Repository-specific key, e.g., repo.test.data_dir
-            repo_name = parts[1]
-            section = f"repo.{repo_name}"
-            option = parts[2]
-        else:
-            # General section, e.g., global settings
-            section = parts[0]
-            option = parts[1]
-        
-        config.set(option, value, section=section, scope=scope)
-        click.echo(f"Set {key} = {value} in {scope} configuration")
-        logging.debug(f"Set config: {section}.{option} = {value} in {scope} scope")
-    except ConfigError as e:
-        click.echo(f"Error: {e}", err=True)
-        raise click.Abort()
+def main():
+    """Entry point for the CLI."""
+    cli()
 
 if __name__ == "__main__":
     main()
