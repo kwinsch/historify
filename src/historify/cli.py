@@ -15,6 +15,7 @@ from historify.cli_scan import cli_scan_command
 from historify.cli_category import handle_add_category_command
 from historify.cli_duplicates import handle_duplicates_command
 from historify.cli_verify import cli_verify_command
+from historify.cli_snapshot import handle_snapshot_command
 
 
 # Configure logging
@@ -188,8 +189,7 @@ def snapshot(output_path, repo_path):
     
     Includes all data files, change logs, seed, signatures, and configuration.
     """
-    click.echo(f"Creating snapshot from {repo_path} to {output_path}")
-    # Placeholder for actual implementation
+    handle_snapshot_command(output_path, repo_path)
 
 def main():
     """Entry point for the CLI."""
