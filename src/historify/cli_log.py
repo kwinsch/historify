@@ -134,20 +134,32 @@ def display_log_entry(num: int, entry: Dict[str, str]) -> None:
         if entry.get("sha256"):
             click.echo(f"SHA256: {entry.get('sha256')}")
     
+    elif entry_type == "changed":
+        click.echo(f"Path: {entry.get('path', 'None')}")
+        if entry.get("category"):
+            click.echo(f"Category: {entry.get('category')}")
+        if entry.get("size"):
+            click.echo(f"Size: {entry.get('size')} bytes")
+        if entry.get("blake3"):
+            click.echo(f"BLAKE3: {entry.get('blake3')}")
+        if entry.get("sha256"):
+            click.echo(f"SHA256: {entry.get('sha256')}")
+    
     elif entry_type == "move":
         click.echo(f"New path: {entry.get('path', 'None')}")
         if entry.get("category"):
             click.echo(f"Category: {entry.get('category')}")
-        # Old path might be stored in metadata or blake3 field
-        if entry.get("blake3") and "/" in entry.get("blake3", ""):
+        # Old path is stored in blake3 field
+        if entry.get("blake3"):
             click.echo(f"Old path: {entry.get('blake3')}")
     
     elif entry_type == "deleted":
         click.echo(f"Deleted path: {entry.get('path', 'None')}")
         if entry.get("category"):
             click.echo(f"Category: {entry.get('category')}")
-    
-    # "duplicate" type removed - now handled by the 'duplicates' command
+        # Sometimes the hash of deleted file is stored in blake3
+        if entry.get("blake3"):
+            click.echo(f"File hash: {entry.get('blake3')}")
     
     elif entry_type == "config":
         click.echo(f"Setting: {entry.get('path', 'None')}")

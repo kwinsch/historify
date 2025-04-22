@@ -55,6 +55,102 @@ def get_file_metadata(file_path: Path) -> Dict[str, str]:
     except (OSError, HashError) as e:
         raise ScanError(f"Failed to gather metadata for {file_path}: {e}")
 
+def walk_directory(directory: Path) -> List[Path]:
+    """
+    Get all files in a directory recursively, excluding special files.
+    
+    Args:
+        directory: Path to the directory to walk.
+        
+    Returns:
+        List of file paths.
+        
+    Raises:
+        ScanError: If walking the directory fails.
+    """
+    files = []
+    try:
+        for root, _, filenames in os.walk(directory):
+            root_path = Path(root)
+            for filename in filenames:
+                # Skip dotfiles and special system files
+                if filename.startswith(".") or filename in ["Thumbs.db", ".DS_Store"]:
+                    continue
+                file_path = root_path / filename
+                if file_path.is_file():
+                    files.append(file_path)
+    except OSError as e:
+        raise ScanError(f"Failed to walk directory {directory}: {e}")
+        
+    return files
+
+def log_change(changelog: Changelog, change_type: str, path: str, category: str, 
+              metadata: Dict[str, str], old_path: str = None) -> None:
+    """
+    Log a file change to the changelog.
+    
+    Args:
+        changelog: Changelog object.
+        change_type: Type of change (new, changed, move).
+        path: File path.
+        category: Category name.
+        metadata: File metadata.
+        old_path: Previous path for move transactions.
+        
+    Raises:
+        ScanError: If there is no open changelog.
+    """
+    current_changelog = changelog.get_current_changelog()
+    if not current_changelog:
+        raise ScanError("No open changelog file. Run 'start' command first.")
+        
+    timestamp = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S UTC")
+    entry = {
+        "timestamp": timestamp,
+        "transaction_type": change_type,
+        "path": path,
+        "category": category,
+        "size": metadata["size"],
+        "ctime": metadata["ctime"],
+        "mtime": metadata["mtime"],
+        "sha256": metadata["sha256"],
+        "blake3": old_path if change_type == "move" else metadata["blake3"]
+    }
+    
+    changelog.csv_manager.append_entry(current_changelog, entry)
+
+def log_deletion(changelog: Changelog, path: str, category: str, file_info: Dict[str, str]) -> None:
+    """
+    Log a file deletion to the changelog.
+    
+    Args:
+        changelog: Changelog object.
+        path: File path.
+        category: Category name.
+        file_info: Information about the deleted file.
+        
+    Raises:
+        ScanError: If there is no open changelog.
+    """
+    current_changelog = changelog.get_current_changelog()
+    if not current_changelog:
+        raise ScanError("No open changelog file. Run 'start' command first.")
+        
+    timestamp = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S UTC")
+    entry = {
+        "timestamp": timestamp,
+        "transaction_type": "deleted",
+        "path": path,
+        "category": category,
+        "size": "",
+        "ctime": "",
+        "mtime": "",
+        "sha256": "",
+        "blake3": file_info["hash"]  # Store the last known hash
+    }
+    
+    changelog.csv_manager.append_entry(current_changelog, entry)
+
 def scan_category(repo_path: Path, category: str, category_path: Path, changelog: Changelog) -> Dict[str, int]:
     """
     Scan a category for file changes and log them.
@@ -70,10 +166,6 @@ def scan_category(repo_path: Path, category: str, category_path: Path, changelog
         
     Raises:
         ScanError: If scanning fails.
-        
-    Note:
-        Duplicates are not marked separately in the changelog but can be 
-        identified using the 'duplicates' command which compares hash values.
     """
     if not category_path.exists():
         raise ScanError(f"Category path does not exist: {category_path}")
@@ -86,68 +178,110 @@ def scan_category(repo_path: Path, category: str, category_path: Path, changelog
     # Track counts for statistics
     counts = {
         "new": 0,
-        "modified": 0,
+        "changed": 0,
         "unchanged": 0,
         "deleted": 0,
         "moved": 0,
         "error": 0
     }
     
-    # Get list of files to scan
-    files_to_scan = []
     try:
-        for root, _, files in os.walk(category_path):
-            root_path = Path(root)
-            for file in files:
-                # Skip dotfiles and special system files
-                if file.startswith(".") or file == "Thumbs.db" or file == ".DS_Store":
-                    continue
-                
-                file_path = root_path / file
-                if file_path.is_file():
-                    files_to_scan.append(file_path)
-    except OSError as e:
-        raise ScanError(f"Failed to walk directory {category_path}: {e}")
-    
-    # Process each file
-    for file_path in files_to_scan:
-        try:
-            # Get relative path from category_path
+        # Build current file map from all changelogs
+        current_files = {}  # Map of path to {hash, size, mtime}
+        
+        # Process all changelogs to build the current state
+        changelog_files = sorted(changelog.changes_dir.glob("changelog-*.csv"))
+        for changelog_file in changelog_files:
             try:
-                rel_path = file_path.relative_to(category_path)
-            except ValueError:
-                # If file is not relative to category_path (should not happen)
-                logger.warning(f"File {file_path} is not relative to category path {category_path}")
+                entries = changelog.csv_manager.read_entries(changelog_file)
+                
+                for entry in entries:
+                    if entry["category"] != category:
+                        continue
+                        
+                    path = entry["path"]
+                    
+                    if entry["transaction_type"] == "new" or entry["transaction_type"] == "changed":
+                        current_files[path] = {
+                            "hash": entry["blake3"],
+                            "size": entry["size"],
+                            "mtime": entry["mtime"]
+                        }
+                    elif entry["transaction_type"] == "deleted" and path in current_files:
+                        del current_files[path]
+                    elif entry["transaction_type"] == "move":
+                        # For moves, the old path is stored in blake3 field
+                        old_path = entry["blake3"]
+                        if old_path in current_files:
+                            del current_files[old_path]
+                            current_files[path] = {
+                                "hash": entry.get("sha256", ""),  # Fallback if blake3 is used for old_path
+                                "size": entry["size"],
+                                "mtime": entry["mtime"]
+                            }
+            except Exception as e:
+                logger.warning(f"Error processing changelog {changelog_file}: {e}")
+        
+        # Get current files on disk
+        files_on_disk = {}
+        for file_path in walk_directory(category_path):
+            try:
+                rel_path = str(file_path.relative_to(category_path))
+                metadata = get_file_metadata(file_path)
+                files_on_disk[rel_path] = metadata
+            except Exception as e:
+                logger.error(f"Error processing file {file_path}: {e}")
                 counts["error"] += 1
-                continue
-            
-            # Get metadata
-            metadata = get_file_metadata(file_path)
-            
-            # Create entry for changelog
-            timestamp = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S UTC")
-            entry = {
-                "timestamp": timestamp,
-                "transaction_type": "new",  # Default, may change based on logic
-                "path": str(rel_path),
-                "category": category,
-                "size": metadata["size"],
-                "ctime": metadata["ctime"],
-                "mtime": metadata["mtime"],
-                "sha256": metadata["sha256"],
-                "blake3": metadata["blake3"]
-            }
-            
-            # TODO: Implement logic to detect file modifications, moves, etc.
-            # For now, just log as new
-            
-            # Write entry to changelog
-            changelog.csv_manager.append_entry(current_changelog, entry)
-            counts["new"] += 1
-            
-        except Exception as e:
-            logger.error(f"Error processing file {file_path}: {e}")
-            counts["error"] += 1
+        
+        # Compare files and detect changes
+        
+        # Process files on disk (new, changed, unchanged)
+        for path, metadata in files_on_disk.items():
+            try:
+                if path in current_files:
+                    # File exists in history - check if changed
+                    if metadata["blake3"] != current_files[path]["hash"]:
+                        # File content changed
+                        log_change(changelog, "changed", path, category, metadata)
+                        counts["changed"] += 1
+                    else:
+                        # File unchanged
+                        counts["unchanged"] += 1
+                else:
+                    # Check if it's a moved file (same hash exists elsewhere)
+                    moved = False
+                    for old_path, old_info in list(current_files.items()):
+                        if old_info["hash"] == metadata["blake3"] and old_path != path:
+                            # Same file moved to new location
+                            log_change(changelog, "move", path, category, metadata, old_path=old_path)
+                            current_files.pop(old_path)  # Remove old path
+                            current_files[path] = {"hash": metadata["blake3"], "size": metadata["size"], "mtime": metadata["mtime"]}
+                            counts["moved"] += 1
+                            moved = True
+                            break
+                    
+                    if not moved:
+                        # Truly new file
+                        log_change(changelog, "new", path, category, metadata)
+                        counts["new"] += 1
+            except Exception as e:
+                logger.error(f"Error processing path {path}: {e}")
+                counts["error"] += 1
+        
+        # Process deleted files
+        for path in list(current_files.keys()):
+            if path not in files_on_disk:
+                try:
+                    # File in history but not on disk - it's been deleted
+                    log_deletion(changelog, path, category, {"hash": current_files[path]["hash"]})
+                    counts["deleted"] += 1
+                except Exception as e:
+                    logger.error(f"Error processing deletion for {path}: {e}")
+                    counts["error"] += 1
+    
+    except Exception as e:
+        logger.error(f"Error during scan of category {category}: {e}")
+        counts["error"] += 1
     
     return counts
 
