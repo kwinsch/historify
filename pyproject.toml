@@ -1,13 +1,13 @@
 [project]
 name = "historify"
-version = "0.1.1"
+version = "0.1.2"
 description = "A tool for revision-safe logging of file changes"
 authors = [
     {name = "Kevin Bortis", email = "kevin@bortis.ch"}
 ]
 license = {text = "MIT"}
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.12"
 dependencies = [
     "click>=8.1.7",
     "configparser>=7.1.0",
@@ -20,7 +20,7 @@ classifiers = [
     "Intended Audience :: System Administrators",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.12",
     "Topic :: System :: Archiving",
     "Topic :: System :: Logging",
 ]
