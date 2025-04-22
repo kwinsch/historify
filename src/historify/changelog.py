@@ -160,6 +160,8 @@ class Changelog:
             if not unencrypted and password is None:
                 logger.warning("Attempting to sign with encrypted key but no password provided")
                 logger.info("Note: You can set HISTORIFY_PASSWORD environment variable")
+                # No getpass here - we're letting the minisign_sign function handle interactive prompting
+                print("Enter password for encrypted minisign key (or set HISTORIFY_PASSWORD env variable):")
             elif not unencrypted and password is not None:
                 logger.debug("Using provided password for encrypted key")
             elif unencrypted:

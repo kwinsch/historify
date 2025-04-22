@@ -154,10 +154,8 @@ def log(repo_path, file, category):
     By default, shows the current log. Use --file to specify a different
     changelog and --category to filter by category.
     """
-    file_str = f" (file: {file})" if file else ""
-    category_str = f" (category: {category})" if category else ""
-    click.echo(f"Showing logs for {repo_path}{file_str}{category_str}")
-    # Placeholder for actual implementation
+    from historify.cli_log import handle_log_command
+    handle_log_command(repo_path, file, category)
 
 @cli.command()
 @click.argument("message", required=True)
