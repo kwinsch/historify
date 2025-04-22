@@ -22,7 +22,7 @@ pip install historify
 
 ### Requirements
 
-- Python 3.10 or later
+- Python 3.13 or later
 - minisign (for signing and verification)
 - b3sum (optional, for BLAKE3 hashing if native implementation is unavailable)
 
