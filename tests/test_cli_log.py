@@ -201,7 +201,9 @@ class TestLogImplementation:
     
     def test_cli_log_command(self):
         """Test CLI log command."""
-        with patch('historify.cli_log.handle_log_command') as mock_handler:
+        # We need to patch handle_log_command at the correct location
+        # Looking at cli.py, it imports handle_log_command directly
+        with patch('historify.cli.handle_log_command') as mock_handler:
             result = self.runner.invoke(log, [str(self.test_repo_path)])
             
             assert result.exit_code == 0
@@ -209,7 +211,7 @@ class TestLogImplementation:
     
     def test_cli_log_command_with_file(self):
         """Test CLI log command with file parameter."""
-        with patch('historify.cli_log.handle_log_command') as mock_handler:
+        with patch('historify.cli.handle_log_command') as mock_handler:
             result = self.runner.invoke(log, [str(self.test_repo_path), "--file", "2025-04-15"])
             
             assert result.exit_code == 0
@@ -217,7 +219,7 @@ class TestLogImplementation:
     
     def test_cli_log_command_with_category(self):
         """Test CLI log command with category parameter."""
-        with patch('historify.cli_log.handle_log_command') as mock_handler:
+        with patch('historify.cli.handle_log_command') as mock_handler:
             result = self.runner.invoke(log, [str(self.test_repo_path), "--category", "source"])
             
             assert result.exit_code == 0

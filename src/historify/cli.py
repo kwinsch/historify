@@ -11,6 +11,7 @@ from historify.cli_config import handle_config_command, handle_check_config_comm
 from historify.cli_comment import handle_comment_command
 from historify.cli_log import handle_log_command
 from historify.cli_lifecycle import handle_start_command, handle_closing_command
+from historify.cli_scan import cli_scan_command  # Add this import
 
 
 # Configure logging
@@ -110,8 +111,7 @@ def scan(repo_path, category):
     Logs changes (new, move, deleted, duplicate) with cryptographic hashes
     to the latest open changelog file.
     """
-    from historify.cli_scan import cli_scan_command
-    cli_scan_command(repo_path, category)
+    cli_scan_command(repo_path, category)  # Change this line to directly call the function
 
 @cli.command()
 @click.argument("repo_path", type=click.Path(exists=True), default=".")
