@@ -4,7 +4,7 @@ Changelog module for historify that handles transaction logs and signatures.
 import os
 import csv
 import logging
-import sqlite3
+import shutil
 from pathlib import Path
 from datetime import datetime, UTC
 from typing import Optional, Dict, List, Tuple, Any
@@ -12,6 +12,7 @@ from typing import Optional, Dict, List, Tuple, Any
 from historify.config import RepositoryConfig, ConfigError
 from historify.hash import hash_file
 from historify.minisign import minisign_sign, minisign_verify, MinisignError
+from historify.csv_manager import CSVManager, CSVError
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +67,9 @@ class Changelog:
         # Try to get minisign keys
         self.minisign_key = self.config.get("minisign.key")
         self.minisign_pub = self.config.get("minisign.pub")
+        
+        # Initialize CSV manager
+        self.csv_manager = CSVManager(repo_path)
     
     def get_current_changelog(self) -> Optional[Path]:
         """
@@ -122,9 +126,10 @@ class Changelog:
             counter += 1
         
         # Create and initialize the new changelog file
-        with open(new_changelog, "w", newline="") as f:
-            writer = csv.DictWriter(f, fieldnames=self.required_fields)
-            writer.writeheader()
+        try:
+            self.csv_manager.create_csv_file(new_changelog)
+        except CSVError as e:
+            raise ChangelogError(f"Failed to create new changelog: {e}")
         
         logger.info(f"Created new changelog file: {new_changelog}")
         return new_changelog
@@ -136,10 +141,10 @@ class Changelog:
         Args:
             file_path: Path to the file to sign.
             password: Optional password for the minisign key.
-                
+            
         Returns:
             True if signing succeeded.
-                
+            
         Raises:
             ChangelogError: If signing fails or minisign keys are not configured.
         """
@@ -160,7 +165,7 @@ class Changelog:
             if not unencrypted and password is None:
                 logger.warning("Attempting to sign with encrypted key but no password provided")
                 logger.info("Note: You can set HISTORIFY_PASSWORD environment variable")
-                # No getpass here - we're letting the minisign_sign function handle interactive prompting
+                # Provide a clear indication that password is needed
                 print("Enter password for encrypted minisign key (or set HISTORIFY_PASSWORD env variable):")
             elif not unencrypted and password is not None:
                 logger.debug("Using provided password for encrypted key")
@@ -225,63 +230,69 @@ class Changelog:
         
         # Write the transaction to the changelog
         try:
-            with open(changelog_file, "a", newline="") as f:
-                writer = csv.DictWriter(f, fieldnames=self.required_fields)
-                writer.writerow(transaction)
+            self.csv_manager.append_entry(changelog_file, transaction)
             
             logger.info(f"Wrote closing transaction to {changelog_file}")
             
-            # Record transaction in the database
-            try:
-                self._record_transaction_in_db(transaction)
-            except Exception as e:
-                logger.error(f"Database error: {e}")
-                # Continue even if database update fails
+            # Update integrity info
+            blake3_hash = hash_file(changelog_file)["blake3"]
+            signature_file = f"{changelog_file.name}.minisig"
+            verified_timestamp = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S UTC")
+            
+            self.csv_manager.update_integrity_info(
+                changelog_file.name,
+                blake3_hash,
+                signature_file,
+                True,  # Considered verified when signed
+                verified_timestamp
+            )
             
             return True
             
-        except (IOError, OSError) as e:
+        except CSVError as e:
             raise ChangelogError(f"Failed to write transaction: {e}")
     
-    def _record_transaction_in_db(self, transaction: Dict[str, str]) -> None:
+    def write_comment(self, message: str) -> bool:
         """
-        Record a transaction in the SQLite database.
+        Write a comment transaction to the current changelog.
         
         Args:
-            transaction: Transaction dictionary.
+            message: Comment text to add to the changelog.
+            
+        Returns:
+            True if the comment was written successfully.
+            
+        Raises:
+            ChangelogError: If there is no open changelog or writing fails.
         """
+        # Get the current changelog
+        changelog_file = self.get_current_changelog()
+        if not changelog_file:
+            raise ChangelogError("No open changelog file. Run 'start' command first.")
+        
+        # Prepare the transaction
+        timestamp = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S UTC")
+        transaction = {
+            "timestamp": timestamp,
+            "transaction_type": "comment",
+            "path": "",
+            "category": "",
+            "size": "",
+            "ctime": "",
+            "mtime": "",
+            "sha256": "",
+            "blake3": message  # Store the comment in the blake3 field
+        }
+        
+        # Write the transaction to the changelog
         try:
-            # Create a new connection for this operation
-            conn = sqlite3.connect(self.db_dir / "cache.db")
-            cursor = conn.cursor()
+            self.csv_manager.append_entry(changelog_file, transaction)
             
-            # Insert into changelog table
-            cursor.execute(
-                """
-                INSERT INTO changelog 
-                (timestamp, transaction_type, path, category, file)
-                VALUES (?, ?, ?, ?, ?)
-                """,
-                (
-                    transaction["timestamp"],
-                    transaction["transaction_type"],
-                    transaction["path"],
-                    transaction["category"],
-                    self.get_current_changelog().name if self.get_current_changelog() else ""
-                )
-            )
+            logger.info(f"Wrote comment to {changelog_file}: {message}")
+            return True
             
-            # For closing transactions, update the integrity table
-            if transaction["transaction_type"] == "closing":
-                self._update_integrity_record(self.get_current_changelog())
-            
-            conn.commit()
-            conn.close()
-            
-        except sqlite3.Error as e:
-            logger.error(f"Database error: {e}")
-            # Re-raise so caller can handle
-            raise
+        except CSVError as e:
+            raise ChangelogError(f"Failed to write comment: {e}")
     
     def start_closing(self, password: Optional[str] = None) -> Tuple[bool, str]:
         """
@@ -358,105 +369,7 @@ class Changelog:
                 # Write a closing transaction referencing the previous changelog
                 self.write_closing_transaction(current_changelog)
                 
-                # Record in integrity table
-                try:
-                    self._update_integrity_record(current_changelog)
-                except Exception as e:
-                    logger.error(f"Failed to update integrity record: {e}")
-                    # Continue even if this fails
-                
                 return True, f"Signed {current_changelog.name} and created new changelog: {new_changelog.name}"
                 
             except (MinisignError, ChangelogError) as e:
                 return False, f"Failed to close changelog: {e}"
-    
-    def _update_integrity_record(self, changelog_file: Path) -> None:
-        """
-        Update the integrity record for a changelog file.
-        
-        Args:
-            changelog_file: Path to the changelog file.
-        """
-        try:
-            # Create a new connection for this operation
-            conn = sqlite3.connect(self.db_dir / "cache.db")
-            cursor = conn.cursor()
-            
-            # Calculate the hash of the changelog
-            blake3_hash = hash_file(changelog_file)["blake3"]
-            
-            # Update integrity table
-            cursor.execute(
-                """
-                INSERT OR REPLACE INTO integrity
-                (changelog_file, blake3, signature_file, verified, verified_timestamp)
-                VALUES (?, ?, ?, ?, ?)
-                """,
-                (
-                    changelog_file.name,
-                    blake3_hash,
-                    f"{changelog_file.name}.minisig",
-                    1,  # Considered verified when signed
-                    datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S UTC")
-                )
-            )
-            
-            conn.commit()
-            conn.close()
-            
-        except sqlite3.Error as e:
-            logger.error(f"Database error: {e}")
-            # Re-raise so caller can handle
-            raise
-
-    def write_comment(self, message: str) -> bool:
-        """
-        Write a comment transaction to the current changelog.
-        
-        Args:
-            message: Comment text to add to the changelog.
-            
-        Returns:
-            True if the comment was written successfully.
-            
-        Raises:
-            ChangelogError: If there is no open changelog or writing fails.
-        """
-        # Get the current changelog
-        changelog_file = self.get_current_changelog()
-        if not changelog_file:
-            raise ChangelogError("No open changelog file. Run 'start' command first.")
-        
-        # Prepare the transaction
-        timestamp = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S UTC")
-        transaction = {
-            "timestamp": timestamp,
-            "transaction_type": "comment",
-            "path": "",
-            "category": "",
-            "size": "",
-            "ctime": "",
-            "mtime": "",
-            "sha256": "",
-            "blake3": message  # Store the comment in the blake3 field
-        }
-        
-        # Write the transaction to the changelog
-        try:
-            with open(changelog_file, "a", newline="") as f:
-                writer = csv.DictWriter(f, fieldnames=self.required_fields)
-                writer.writerow(transaction)
-            
-            logger.info(f"Wrote comment to {changelog_file}: {message}")
-            
-            # Record transaction in the database
-            try:
-                self._record_transaction_in_db(transaction)
-            except Exception as e:
-                logger.error(f"Database error: {e}")
-                # Continue even if database update fails
-            
-            return True
-            
-        except (IOError, OSError) as e:
-            raise ChangelogError(f"Failed to write comment: {e}")

@@ -3,11 +3,13 @@ Tests for the config command implementation.
 """
 import pytest
 import os
-import sqlite3
+import csv
 import shutil
 import configparser
 from pathlib import Path
 from click.testing import CliRunner
+from unittest.mock import patch, MagicMock
+
 from historify.cli import init, config, check_config
 from historify.config import RepositoryConfig, ConfigError
 from historify.cli_init import init_repository
@@ -35,6 +37,7 @@ class TestConfigImplementation:
         assert config.repo_path == self.test_repo_path.resolve()
         assert config.db_dir == self.test_repo_path.resolve() / "db"
         assert config.config_file == self.test_repo_path.resolve() / "db" / "config"
+        assert config.config_csv == self.test_repo_path.resolve() / "db" / "config.csv"
     
     def test_repository_config_init_invalid(self):
         """Test RepositoryConfig with invalid repository."""
@@ -59,19 +62,22 @@ class TestConfigImplementation:
         value = config.get("test.value")
         assert value == "testing123"
         
-        # Check it was saved in both places
+        # Check it was saved in INI file
         parser = configparser.ConfigParser()
         parser.read(self.test_repo_path / "db" / "config")
         assert "test" in parser
         assert "value" in parser["test"]
         assert parser["test"]["value"] == "testing123"
         
-        conn = sqlite3.connect(self.test_repo_path / "db" / "cache.db")
-        cursor = conn.cursor()
-        cursor.execute("SELECT value FROM config WHERE key=?", ("test.value",))
-        db_value = cursor.fetchone()[0]
-        assert db_value == "testing123"
-        conn.close()
+        # Check it was saved in CSV file
+        with open(self.test_repo_path / "db" / "config.csv", "r", newline="") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                if row["key"] == "test.value":
+                    assert row["value"] == "testing123"
+                    break
+            else:
+                pytest.fail("Config value not found in CSV file")
     
     def test_set_config_invalid_key(self):
         """Test setting config with invalid key format."""
@@ -89,13 +95,6 @@ class TestConfigImplementation:
         
         # Remove a required config from both storage locations
         
-        # Remove from database
-        conn = sqlite3.connect(self.test_repo_path / "db" / "cache.db")
-        cursor = conn.cursor()
-        cursor.execute("DELETE FROM config WHERE key=?", ("hash.algorithms",))
-        conn.commit()
-        conn.close()
-        
         # Remove from INI file
         config_file = self.test_repo_path / "db" / "config"
         parser = configparser.ConfigParser()
@@ -104,6 +103,20 @@ class TestConfigImplementation:
             del parser["hash"]["algorithms"]
             with open(config_file, "w") as f:
                 parser.write(f)
+        
+        # Remove from CSV file
+        config_csv = self.test_repo_path / "db" / "config.csv"
+        rows = []
+        with open(config_csv, "r", newline="") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                if row["key"] != "hash.algorithms":
+                    rows.append(row)
+        
+        with open(config_csv, "w", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=["key", "value"])
+            writer.writeheader()
+            writer.writerows(rows)
         
         # Config should now have issues
         config = RepositoryConfig(str(self.test_repo_path))  # Re-read config
@@ -162,14 +175,7 @@ class TestConfigImplementation:
             assert "Checking configuration in" in result.output
             assert "Configuration check passed with no issues" in result.output
             
-            # Modify both SQLite database and INI file to remove a required config
-            
-            # Remove from database
-            conn = sqlite3.connect("./repo_dir/db/cache.db")
-            cursor = conn.cursor()
-            cursor.execute("DELETE FROM config WHERE key=?", ("repository.name",))
-            conn.commit()
-            conn.close()
+            # Modify both INI file and CSV files to remove a required config
             
             # Remove from INI file
             config_file = Path("./repo_dir/db/config")
@@ -179,6 +185,20 @@ class TestConfigImplementation:
                 del parser["repository"]["name"]
                 with open(config_file, "w") as f:
                     parser.write(f)
+            
+            # Remove from CSV file
+            config_csv = Path("./repo_dir/db/config.csv")
+            rows = []
+            with open(config_csv, "r", newline="") as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    if row["key"] != "repository.name":
+                        rows.append(row)
+            
+            with open(config_csv, "w", newline="") as f:
+                writer = csv.DictWriter(f, fieldnames=["key", "value"])
+                writer.writeheader()
+                writer.writerows(rows)
             
             # Check configuration again (should find issues)
             result = self.runner.invoke(check_config, ["./repo_dir"])

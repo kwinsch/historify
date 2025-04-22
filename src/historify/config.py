@@ -3,7 +3,7 @@ Configuration module for historify that handles repository settings.
 """
 import os
 import logging
-import sqlite3
+import csv
 import configparser
 from pathlib import Path
 from typing import Optional, Dict, Any, List, Tuple
@@ -30,7 +30,7 @@ class RepositoryConfig:
         self.repo_path = Path(repo_path).resolve()
         self.db_dir = self.repo_path / "db"
         self.config_file = self.db_dir / "config"
-        self.db_file = self.db_dir / "cache.db"
+        self.config_csv = self.db_dir / "config.csv"
         
         # Check if this is a valid repository
         if not self._is_valid_repository():
@@ -40,6 +40,10 @@ class RepositoryConfig:
         self.config = configparser.ConfigParser()
         if self.config_file.exists():
             self.config.read(self.config_file)
+        
+        # Ensure config.csv exists
+        if not self.config_csv.exists():
+            self._initialize_config_csv()
     
     def _is_valid_repository(self) -> bool:
         """
@@ -50,9 +54,31 @@ class RepositoryConfig:
         """
         return (
             self.db_dir.exists() and
-            self.db_file.exists() and
             self.config_file.exists()
         )
+    
+    def _initialize_config_csv(self) -> None:
+        """
+        Initialize the config.csv file with header.
+        
+        Raises:
+            ConfigError: If initialization fails.
+        """
+        try:
+            with open(self.config_csv, "w", newline="") as f:
+                writer = csv.DictWriter(f, fieldnames=["key", "value"])
+                writer.writeheader()
+                
+                # Write existing config from INI file
+                for section in self.config.sections():
+                    for option in self.config[section]:
+                        key = f"{section}.{option}"
+                        value = self.config[section][option]
+                        writer.writerow({"key": key, "value": value})
+                        
+        except Exception as e:
+            logger.error(f"Failed to initialize config.csv: {e}")
+            raise ConfigError(f"Failed to initialize config.csv: {e}")
     
     def get(self, key: str, default: Any = None) -> Any:
         """
@@ -78,20 +104,16 @@ class RepositoryConfig:
         if section in self.config and option in self.config[section]:
             return self.config[section][option]
         
-        # Then try from database
+        # Then try from CSV file
         try:
-            conn = sqlite3.connect(self.db_file)
-            cursor = conn.cursor()
-            
-            cursor.execute("SELECT value FROM config WHERE key = ?", (key,))
-            row = cursor.fetchone()
-            
-            conn.close()
-            
-            if row:
-                return row[0]
-        except sqlite3.Error as e:
-            logger.error(f"Database error: {e}")
+            if self.config_csv.exists():
+                with open(self.config_csv, "r", newline="") as f:
+                    reader = csv.DictReader(f)
+                    for row in reader:
+                        if row["key"] == key:
+                            return row["value"]
+        except Exception as e:
+            logger.error(f"Error reading config.csv: {e}")
         
         return default
     
@@ -127,87 +149,96 @@ class RepositoryConfig:
         except OSError as e:
             raise ConfigError(f"Failed to write config file: {e}")
         
-        # Update database
+        # Update CSV file
         try:
-            conn = sqlite3.connect(self.db_file)
-            cursor = conn.cursor()
+            # Read existing entries
+            entries = []
             
-            cursor.execute(
-                "INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)",
-                (key, value)
-            )
+            if self.config_csv.exists():
+                with open(self.config_csv, "r", newline="") as f:
+                    reader = csv.DictReader(f)
+                    for row in reader:
+                        if row["key"] != key:
+                            entries.append(row)
             
-            conn.commit()
-            conn.close()
+            # Add new entry
+            entries.append({"key": key, "value": value})
+            
+            # Write updated entries
+            with open(self.config_csv, "w", newline="") as f:
+                writer = csv.DictWriter(f, fieldnames=["key", "value"])
+                writer.writeheader()
+                writer.writerows(entries)
             
             logger.info(f"Set configuration {key} = {value}")
             return True
             
-        except sqlite3.Error as e:
-            raise ConfigError(f"Failed to update database config: {e}")
+        except Exception as e:
+            raise ConfigError(f"Failed to update config.csv: {e}")
     
     def check(self) -> List[Tuple[str, str]]:
-            """
-            Check the configuration for issues.
-            
-            Returns:
-                List of (key, issue) tuples for any configuration issues found.
-            """
-            issues = []
-            
-            # Required configurations to check
-            required_configs = {
-                "repository.name": "Repository name is not set",
-                "hash.algorithms": "Hash algorithms not configured (should include at least blake3)"
-            }
-            
-            # Check required configurations - test both storage locations
-            for key, issue in required_configs.items():
-                # Split the key into section and option
-                parts = key.split(".", 1)
-                if len(parts) != 2:
-                    continue
-                    
-                section, option = parts
+        """
+        Check the configuration for issues.
+        
+        Returns:
+            List of (key, issue) tuples for any configuration issues found.
+        """
+        issues = []
+        
+        # Required configurations to check
+        required_configs = {
+            "repository.name": "Repository name is not set",
+            "hash.algorithms": "Hash algorithms not configured (should include at least blake3)"
+        }
+        
+        # Check required configurations - test both storage locations
+        for key, issue in required_configs.items():
+            # Split the key into section and option
+            parts = key.split(".", 1)
+            if len(parts) != 2:
+                continue
                 
-                # Check if it exists in the INI file
-                ini_exists = section in self.config and option in self.config[section]
-                
-                # Check if it exists in the database
-                db_exists = False
-                try:
-                    conn = sqlite3.connect(self.db_file)
-                    cursor = conn.cursor()
-                    cursor.execute("SELECT value FROM config WHERE key = ?", (key,))
-                    row = cursor.fetchone()
-                    conn.close()
-                    db_exists = row is not None
-                except sqlite3.Error:
-                    db_exists = False
-                
-                # If missing from both locations, it's an issue
-                if not ini_exists and not db_exists:
-                    issues.append((key, issue))
+            section, option = parts
             
-            # Check hash algorithms
-            hash_algorithms = self.get("hash.algorithms", "")
-            if hash_algorithms and "blake3" not in hash_algorithms.lower().split(","):
-                issues.append(("hash.algorithms", "blake3 must be included in hash algorithms"))
+            # Check if it exists in the INI file
+            ini_exists = section in self.config and option in self.config[section]
             
-            # Check minisign key if specified
-            minisign_key = self.get("minisign.key")
-            minisign_pub = self.get("minisign.pub")
+            # Check if it exists in the CSV file
+            csv_exists = False
+            try:
+                if self.config_csv.exists():
+                    with open(self.config_csv, "r", newline="") as f:
+                        reader = csv.DictReader(f)
+                        for row in reader:
+                            if row["key"] == key:
+                                csv_exists = True
+                                break
+            except Exception:
+                csv_exists = False
             
-            if minisign_key and not Path(minisign_key).exists():
-                issues.append(("minisign.key", f"Minisign key file not found: {minisign_key}"))
-            
-            if minisign_pub and not Path(minisign_pub).exists():
-                issues.append(("minisign.pub", f"Minisign public key file not found: {minisign_pub}"))
-            
-            if (minisign_key and not minisign_pub) or (minisign_pub and not minisign_key):
-                issues.append(("minisign", "Both minisign.key and minisign.pub must be set"))
-            
-            return issues
+            # If missing from both locations, it's an issue
+            if not ini_exists and not csv_exists:
+                issues.append((key, issue))
+        
+        # Check hash algorithms
+        hash_algorithms = self.get("hash.algorithms", "")
+        if hash_algorithms and "blake3" not in hash_algorithms.lower().split(","):
+            issues.append(("hash.algorithms", "blake3 must be included in hash algorithms"))
+        
+        # Check minisign key if specified
+        minisign_key = self.get("minisign.key")
+        minisign_pub = self.get("minisign.pub")
+        
+        if minisign_key and not Path(minisign_key).exists():
+            issues.append(("minisign.key", f"Minisign key file not found: {minisign_key}"))
+        
+        if minisign_pub and not Path(minisign_pub).exists():
+            issues.append(("minisign.pub", f"Minisign public key file not found: {minisign_pub}"))
+        
+        if (minisign_key and not minisign_pub) or (minisign_pub and not minisign_key):
+            issues.append(("minisign", "Both minisign.key and minisign.pub must be set"))
+        
+        return issues
 
     def list_all(self) -> Dict[str, str]:
         """
@@ -224,19 +255,15 @@ class RepositoryConfig:
                 key = f"{section}.{option}"
                 config_values[key] = self.config[section][option]
         
-        # Get values from database
+        # Get values from CSV file
         try:
-            conn = sqlite3.connect(self.db_file)
-            cursor = conn.cursor()
-            
-            cursor.execute("SELECT key, value FROM config")
-            for key, value in cursor.fetchall():
-                if key not in config_values:  # Prefer INI file values
-                    config_values[key] = value
-            
-            conn.close()
-            
-        except sqlite3.Error as e:
-            logger.error(f"Database error when listing config: {e}")
+            if self.config_csv.exists():
+                with open(self.config_csv, "r", newline="") as f:
+                    reader = csv.DictReader(f)
+                    for row in reader:
+                        if row["key"] not in config_values:  # Prefer INI file values
+                            config_values[row["key"]] = row["value"]
+        except Exception as e:
+            logger.error(f"Error reading config.csv: {e}")
         
         return config_values

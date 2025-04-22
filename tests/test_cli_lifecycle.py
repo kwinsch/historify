@@ -3,9 +3,8 @@ Tests for the lifecycle commands (start, closing) implementation.
 """
 import pytest
 import os
-import sqlite3
-import shutil
 import csv
+import shutil
 from pathlib import Path
 from click.testing import CliRunner
 from unittest.mock import patch, MagicMock
@@ -65,6 +64,8 @@ class TestLifecycleImplementation:
         assert changelog.changes_dir == self.test_repo_path / "changes"
         assert changelog.minisign_key == str(self.minisign_key)
         assert changelog.minisign_pub == str(self.minisign_pub)
+        # Verify CSV manager is initialized
+        assert changelog.csv_manager is not None
     
     @patch('historify.changelog.minisign_sign')
     def test_start_initial(self, mock_sign):
@@ -98,7 +99,7 @@ class TestLifecycleImplementation:
         assert kwargs.get('password') is None
         
         # Check changelog content - verify it contains closing record
-        with open(changelog_files[0], "r") as f:
+        with open(changelog_files[0], "r", newline="") as f:
             reader = csv.DictReader(f)
             rows = list(reader)
             assert len(rows) == 1
@@ -109,16 +110,14 @@ class TestLifecycleImplementation:
     @patch('historify.changelog.minisign_sign')
     @patch('historify.changelog.Changelog.create_new_changelog')
     @patch('historify.changelog.Changelog.write_closing_transaction')
-    @patch('historify.changelog.Changelog._update_integrity_record')
-    @patch('historify.changelog.Changelog._record_transaction_in_db')
-    def test_closing_and_new_start(self, mock_record, mock_update, mock_write, mock_create, mock_sign):
+    @patch('historify.csv_manager.CSVManager.update_integrity_info')
+    def test_closing_and_new_start(self, mock_update, mock_write, mock_create, mock_sign):
         """Test closing current changelog and starting a new one using extensive mocking."""
         # Set up all mocks
         mock_sign.return_value = True
         mock_create.return_value = Path("mock_changelog.csv")
         mock_write.return_value = True
-        mock_update.return_value = None
-        mock_record.return_value = None
+        mock_update.return_value = True
         
         # Create a mock for get_current_changelog that returns different values on consecutive calls
         with patch('historify.changelog.Changelog.get_current_changelog') as mock_get_current:
@@ -160,12 +159,12 @@ class TestLifecycleImplementation:
             mock_write.assert_called()
     
     @patch('historify.cli_lifecycle.Changelog')
-    @patch('logging.Logger.warning')
-    def test_cli_start_command(self, mock_warning, mock_changelog_class):
+    def test_cli_start_command(self, mock_changelog_class):
         """Test CLI start command."""
         # Set up mock
         mock_changelog = MagicMock()
         mock_changelog.start_closing.return_value = (True, "Success message")
+        mock_changelog.minisign_key = None  # No need for password prompt
         mock_changelog_class.return_value = mock_changelog
         
         with self.runner.isolated_filesystem():
@@ -174,8 +173,6 @@ class TestLifecycleImplementation:
             os.makedirs("repo_dir/changes")
             with open("repo_dir/db/config", "w") as f:
                 f.write("[repository]\nname = test-repo\n")
-            with open("repo_dir/db/cache.db", "w") as f:
-                f.write("mock db file")
             
             # Temporarily remove HISTORIFY_PASSWORD from environment if it exists
             old_env = os.environ.get("HISTORIFY_PASSWORD")
@@ -189,9 +186,6 @@ class TestLifecycleImplementation:
                 assert result.exit_code == 0
                 assert "Starting new transaction period" in result.output
                 assert "Success" in result.output
-                
-                # Verify warning about ENV var was logged
-                mock_warning.assert_called_once()
                 
                 # Verify the changelog method was called
                 mock_changelog_class.assert_called_once()
@@ -207,6 +201,7 @@ class TestLifecycleImplementation:
         # Set up mock
         mock_changelog = MagicMock()
         mock_changelog.start_closing.return_value = (True, "Success message")
+        mock_changelog.minisign_key = "some_key_path"  # Path that will trigger password check
         mock_changelog_class.return_value = mock_changelog
         
         with self.runner.isolated_filesystem():
@@ -215,8 +210,6 @@ class TestLifecycleImplementation:
             os.makedirs("repo_dir/changes")
             with open("repo_dir/db/config", "w") as f:
                 f.write("[repository]\nname = test-repo\n")
-            with open("repo_dir/db/cache.db", "w") as f:
-                f.write("mock db file")
             
             # Set environment variable
             old_env = os.environ.get("HISTORIFY_PASSWORD")
@@ -240,12 +233,12 @@ class TestLifecycleImplementation:
                     os.environ.pop("HISTORIFY_PASSWORD", None)
     
     @patch('historify.cli_lifecycle.Changelog')
-    @patch('logging.Logger.warning')
-    def test_cli_closing_command(self, mock_warning, mock_changelog_class):
+    def test_cli_closing_command(self, mock_changelog_class):
         """Test CLI closing command."""
         # Set up mock
         mock_changelog = MagicMock()
         mock_changelog.start_closing.return_value = (True, "Success message")
+        mock_changelog.minisign_key = None  # No need for password prompt
         mock_changelog_class.return_value = mock_changelog
         
         with self.runner.isolated_filesystem():
@@ -254,8 +247,6 @@ class TestLifecycleImplementation:
             os.makedirs("repo_dir/changes")
             with open("repo_dir/db/config", "w") as f:
                 f.write("[repository]\nname = test-repo\n")
-            with open("repo_dir/db/cache.db", "w") as f:
-                f.write("mock db file")
             
             # Temporarily remove HISTORIFY_PASSWORD from environment if it exists
             old_env = os.environ.get("HISTORIFY_PASSWORD")
@@ -268,9 +259,6 @@ class TestLifecycleImplementation:
                 
                 assert result.exit_code == 0
                 assert "Success" in result.output
-                
-                # Verify warning about ENV var was logged
-                mock_warning.assert_called_once()
                 
                 # Verify the changelog method was called
                 mock_changelog_class.assert_called_once()

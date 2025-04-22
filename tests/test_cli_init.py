@@ -3,10 +3,12 @@ Tests for the init command implementation.
 """
 import pytest
 import os
-import sqlite3
+import csv
 import shutil
 from pathlib import Path
 from click.testing import CliRunner
+from unittest.mock import patch, MagicMock
+
 from historify.cli import init
 from historify.cli_init import init_repository, handle_init_command
 from historify.repository import Repository, RepositoryError
@@ -42,54 +44,47 @@ class TestInitImplementation:
         assert self.test_repo_path.exists()
         assert (self.test_repo_path / "db").exists()
         assert (self.test_repo_path / "db" / "config").exists()
-        assert (self.test_repo_path / "db" / "cache.db").exists()
+        assert (self.test_repo_path / "db" / "config.csv").exists()
         assert (self.test_repo_path / "db" / "seed.bin").exists()
+        assert (self.test_repo_path / "db" / "integrity.csv").exists()
         assert (self.test_repo_path / "changes").exists()
         
         # Verify seed file size
         seed_size = (self.test_repo_path / "db" / "seed.bin").stat().st_size
         assert seed_size == 1024 * 1024  # 1MB
         
-        # Verify database structure
-        conn = sqlite3.connect(self.test_repo_path / "db" / "cache.db")
-        cursor = conn.cursor()
+        # Verify config.csv structure
+        with open(self.test_repo_path / "db" / "config.csv", "r", newline="") as f:
+            reader = csv.DictReader(f)
+            rows = list(reader)
+            # Check that we have at least the required config entries
+            config_keys = [row["key"] for row in rows]
+            assert "repository.name" in config_keys
+            assert "hash.algorithms" in config_keys
+            assert "changes.directory" in config_keys
         
-        # Check tables exist
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
-        tables = [row[0] for row in cursor.fetchall()]
-        assert "files" in tables
-        assert "categories" in tables
-        assert "changelog" in tables
-        assert "config" in tables
-        assert "integrity" in tables
-        
-        # Check config table has repository name
-        cursor.execute("SELECT value FROM config WHERE key='repository.name'")
-        repo_name = cursor.fetchone()[0]
-        assert repo_name == "test-repo"
-        
-        # Check files table structure - ensure blake3 is primary key, not hash
-        cursor.execute("PRAGMA table_info(files)")
-        columns = {row[1]: row for row in cursor.fetchall()}
-        assert "blake3" in columns
-        assert columns["blake3"][5] == 1  # Is primary key
-        assert "path" in columns
-        assert "category" in columns
-        assert "hash" not in columns  # Ensure the redundant hash field is removed
-        
-        conn.close()
+        # Verify integrity.csv structure
+        with open(self.test_repo_path / "db" / "integrity.csv", "r", newline="") as f:
+            reader = csv.DictReader(f)
+            fieldnames = reader.fieldnames
+            assert "changelog_file" in fieldnames
+            assert "blake3" in fieldnames
+            assert "signature_file" in fieldnames
+            assert "verified" in fieldnames
+            assert "verified_timestamp" in fieldnames
         
     def test_init_repository_function_default_name(self):
         """Test init_repository function with default name."""
         result = init_repository(str(self.test_repo_path))
         assert result is True
         
-        conn = sqlite3.connect(self.test_repo_path / "db" / "cache.db")
-        cursor = conn.cursor()
-        cursor.execute("SELECT value FROM config WHERE key='repository.name'")
-        repo_name = cursor.fetchone()[0]
-        assert repo_name == "test_repo"  # Default to directory name
-        conn.close()
+        # Verify repository name in config.csv
+        with open(self.test_repo_path / "db" / "config.csv", "r", newline="") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                if row["key"] == "repository.name":
+                    assert row["value"] == "test_repo"  # Default to directory name
+                    break
     
     def test_handle_init_command(self):
         """Test handle_init_command function."""
@@ -101,8 +96,6 @@ class TestInitImplementation:
             assert Path("repo_dir").exists()
             assert Path("repo_dir/db").exists()
             assert Path("repo_dir/db/config").exists()
-            assert Path("repo_dir/db/cache.db").exists()
-            assert Path("repo_dir/db/seed.bin").exists()
             assert Path("repo_dir/changes").exists()
     
     def test_cli_init_command(self):

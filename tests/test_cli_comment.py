@@ -14,6 +14,7 @@ from historify.changelog import Changelog, ChangelogError
 from historify.config import RepositoryConfig
 from historify.cli_init import init_repository
 from historify.cli_comment import handle_comment_command
+from historify.csv_manager import CSVManager, CSVError
 
 class TestCommentImplementation:
     """Test the comment command implementation."""
@@ -102,8 +103,6 @@ class TestCommentImplementation:
             os.makedirs("repo_dir/changes")
             with open("repo_dir/db/config", "w") as f:
                 f.write("[repository]\nname = test-repo\n")
-            with open("repo_dir/db/cache.db", "w") as f:
-                f.write("mock db file")
                 
             result = self.runner.invoke(comment, ["Test comment", "repo_dir"])
             
@@ -129,8 +128,6 @@ class TestCommentImplementation:
             os.makedirs("repo_dir/changes")
             with open("repo_dir/db/config", "w") as f:
                 f.write("[repository]\nname = test-repo\n")
-            with open("repo_dir/db/cache.db", "w") as f:
-                f.write("mock db file")
                 
             result = self.runner.invoke(comment, ["Test comment", "repo_dir"])
             

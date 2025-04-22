@@ -9,9 +9,10 @@ from pathlib import Path
 from click.testing import CliRunner
 from unittest.mock import patch, MagicMock
 
-from historify.cli import log
+from historify.cli import log, comment
 from historify.cli_log import handle_log_command, read_log_entries, display_log_entry
 from historify.changelog import Changelog, ChangelogError
+from historify.csv_manager import CSVManager
 
 class TestLogImplementation:
     """Test the log command implementation."""
@@ -30,10 +31,6 @@ class TestLogImplementation:
         with open(self.db_dir / "config", "w") as f:
             f.write("[repository]\nname = test-repo\n")
             
-        # Create a minimal db file
-        with open(self.db_dir / "cache.db", "w") as f:
-            f.write("mock db file")
-        
         # Create changes directory
         self.changes_dir = self.test_repo_path / "changes"
         self.changes_dir.mkdir(exist_ok=True)
@@ -85,18 +82,23 @@ class TestLogImplementation:
     
     def test_read_log_entries(self):
         """Test reading log entries from a file."""
-        # Test reading all entries
         log_file = self.changes_dir / "changelog-2025-04-15.csv"
-        entries = read_log_entries(log_file)
+        
+        # Initialize CSV manager
+        csv_manager = CSVManager(str(self.test_repo_path))
+        
+        # Test reading all entries
+        entries = csv_manager.read_entries(log_file)
         assert len(entries) == 3
         assert entries[0]["transaction_type"] == "closing"
         assert entries[1]["transaction_type"] == "new"
         assert entries[2]["transaction_type"] == "comment"
         
         # Test with category filter
-        entries = read_log_entries(log_file, "source")
-        assert len(entries) == 1
-        assert entries[0]["path"] == "src/main.py"
+        entries = csv_manager.read_entries(log_file)
+        filtered_entries = [entry for entry in entries if entry["category"] == "source"]
+        assert len(filtered_entries) == 1
+        assert filtered_entries[0]["path"] == "src/main.py"
     
     @patch('historify.cli_log.click.echo')
     def test_display_log_entry(self, mock_echo):
@@ -136,6 +138,12 @@ class TestLogImplementation:
         mock_changelog = MagicMock()
         mock_changelog.changes_dir = self.changes_dir
         mock_changelog.get_current_changelog.return_value = self.changes_dir / "changelog-2025-04-22.csv"
+        # Set up CSV manager mock
+        mock_csv_manager = MagicMock()
+        mock_changelog.csv_manager = mock_csv_manager
+        mock_csv_manager.read_entries.return_value = [
+            {"timestamp": "2025-04-22", "transaction_type": "closing"}
+        ]
         mock_changelog_class.return_value = mock_changelog
         
         # Call the handler directly
@@ -151,6 +159,12 @@ class TestLogImplementation:
         # Set up mock
         mock_changelog = MagicMock()
         mock_changelog.changes_dir = self.changes_dir
+        # Set up CSV manager mock
+        mock_csv_manager = MagicMock()
+        mock_changelog.csv_manager = mock_csv_manager
+        mock_csv_manager.read_entries.return_value = [
+            {"timestamp": "2025-04-15", "transaction_type": "closing"}
+        ]
         mock_changelog_class.return_value = mock_changelog
         
         # Call the handler directly with file parameter
@@ -168,6 +182,14 @@ class TestLogImplementation:
         mock_changelog = MagicMock()
         mock_changelog.changes_dir = self.changes_dir
         mock_changelog.get_current_changelog.return_value = self.changes_dir / "changelog-2025-04-15.csv"
+        # Set up CSV manager mock
+        mock_csv_manager = MagicMock()
+        mock_changelog.csv_manager = mock_csv_manager
+        entries = [
+            {"timestamp": "2025-04-15", "transaction_type": "closing", "category": ""},
+            {"timestamp": "2025-04-15", "transaction_type": "new", "category": "source"}
+        ]
+        mock_csv_manager.read_entries.return_value = entries
         mock_changelog_class.return_value = mock_changelog
         
         # Call the handler directly with category parameter
@@ -200,3 +222,23 @@ class TestLogImplementation:
             
             assert result.exit_code == 0
             mock_handler.assert_called_once_with(str(self.test_repo_path), None, "source")
+
+@patch('historify.cli_comment.Changelog')
+def test_comment_command(mock_changelog_class):
+    """Test the comment command."""
+    # Set up mock
+    mock_changelog = MagicMock()
+    mock_changelog.get_current_changelog.return_value = Path("changelog-2025-04-22.csv")
+    mock_changelog.write_comment.return_value = True
+    mock_changelog_class.return_value = mock_changelog
+    
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        result = runner.invoke(comment, ["Test comment message", "."])
+        
+        assert result.exit_code == 0
+        assert "Comment added to changelog" in result.output or "Adding comment to" in result.output
+        
+        # Verify the comment method was called
+        mock_changelog_class.assert_called_once()
+        mock_changelog.write_comment.assert_called_once_with("Test comment message")

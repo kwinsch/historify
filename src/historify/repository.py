@@ -3,8 +3,9 @@ Repository module for historify that handles repository initialization and struc
 """
 import os
 import logging
-import sqlite3
 import secrets
+import csv
+import configparser
 from datetime import datetime, UTC
 from pathlib import Path
 from typing import Optional, Dict
@@ -32,10 +33,11 @@ class Repository:
         # Repository structure paths
         self.db_dir = self.path / "db"
         self.config_file = self.db_dir / "config"
-        self.db_file = self.db_dir / "cache.db"
+        self.config_csv = self.db_dir / "config.csv"
         self.seed_file = self.db_dir / "seed.bin"
         self.seed_sig_file = self.seed_file.with_suffix(".bin.minisig")
         self.changes_dir = self.path / "changes"
+        self.integrity_csv = self.db_dir / "integrity.csv"
     
     def initialize(self) -> bool:
         """
@@ -52,9 +54,9 @@ class Repository:
         try:
             # Create repository structure
             self._create_dirs()
-            self._initialize_database()
+            self._create_config_files()
             self._create_seed()
-            self._create_config()
+            self._create_integrity_csv()
             
             logger.info(f"Repository initialization completed successfully")
             return True
@@ -70,97 +72,11 @@ class Repository:
         self.db_dir.mkdir(parents=True, exist_ok=True)
         self.changes_dir.mkdir(parents=True, exist_ok=True)
     
-    def _initialize_database(self) -> None:
-        """Initialize SQLite database with schema."""
-        logger.debug(f"Initializing database at {self.db_file}")
+    def _create_config_files(self) -> None:
+        """Create configuration files."""
+        logger.debug(f"Creating config files")
         
-        conn = sqlite3.connect(self.db_file)
-        cursor = conn.cursor()
-        
-        # Files table
-        cursor.execute("""
-        CREATE TABLE IF NOT EXISTS files (
-            path TEXT NOT NULL,
-            category TEXT NOT NULL,
-            size INTEGER,
-            ctime TEXT,
-            mtime TEXT,
-            sha256 TEXT,
-            blake3 TEXT NOT NULL PRIMARY KEY,
-            timestamp TEXT NOT NULL,
-            status TEXT NOT NULL
-        )
-        """)
-        
-        # Categories table
-        cursor.execute("""
-        CREATE TABLE IF NOT EXISTS categories (
-            name TEXT PRIMARY KEY,
-            path TEXT NOT NULL,
-            description TEXT,
-            is_external BOOLEAN NOT NULL DEFAULT 0
-        )
-        """)
-        
-        # Changelog table
-        cursor.execute("""
-        CREATE TABLE IF NOT EXISTS changelog (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            timestamp TEXT NOT NULL,
-            transaction_type TEXT NOT NULL,
-            path TEXT,
-            category TEXT,
-            metadata TEXT,
-            file TEXT
-        )
-        """)
-        
-        # Configuration table
-        cursor.execute("""
-        CREATE TABLE IF NOT EXISTS config (
-            key TEXT PRIMARY KEY,
-            value TEXT NOT NULL,
-            description TEXT
-        )
-        """)
-        
-        # Integrity table
-        cursor.execute("""
-        CREATE TABLE IF NOT EXISTS integrity (
-            changelog_file TEXT PRIMARY KEY,
-            blake3 TEXT NOT NULL,
-            signature_file TEXT,
-            verified BOOLEAN NOT NULL DEFAULT 0,
-            verified_timestamp TEXT
-        )
-        """)
-        
-        # Add repository name to config
-        cursor.execute(
-            "INSERT INTO config (key, value, description) VALUES (?, ?, ?)",
-            ("repository.name", self.name, "Repository name")
-        )
-        
-        # Add default configuration
-        cursor.execute(
-            "INSERT INTO config (key, value, description) VALUES (?, ?, ?)",
-            ("hash.algorithms", "blake3,sha256", "Hash algorithms used for file integrity")
-        )
-        
-        conn.commit()
-        conn.close()
-    
-    def _create_seed(self) -> None:
-        """Create random seed file."""
-        logger.debug(f"Creating seed file at {self.seed_file}")
-        
-        with open(self.seed_file, "wb") as f:
-            f.write(secrets.token_bytes(1024 * 1024))  # 1MB of random data
-    
-    def _create_config(self) -> None:
-        """Create configuration file."""
-        logger.debug(f"Creating config file at {self.config_file}")
-        
+        # Create INI config file
         with open(self.config_file, "w") as f:
             f.write(f"[repository]\n")
             f.write(f"name = {self.name}\n")
@@ -171,3 +87,29 @@ class Repository:
             f.write(f"\n")
             f.write(f"[changes]\n")
             f.write(f"directory = changes\n")
+        
+        # Create CSV config file
+        with open(self.config_csv, "w", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=["key", "value"])
+            writer.writeheader()
+            writer.writerow({"key": "repository.name", "value": self.name})
+            writer.writerow({"key": "repository.created", "value": datetime.now(UTC).isoformat()})
+            writer.writerow({"key": "hash.algorithms", "value": "blake3,sha256"})
+            writer.writerow({"key": "changes.directory", "value": "changes"})
+    
+    def _create_seed(self) -> None:
+        """Create random seed file."""
+        logger.debug(f"Creating seed file")
+        
+        with open(self.seed_file, "wb") as f:
+            f.write(secrets.token_bytes(1024 * 1024))  # 1MB of random data
+    
+    def _create_integrity_csv(self) -> None:
+        """Create integrity CSV file."""
+        logger.debug(f"Creating integrity CSV file")
+        
+        with open(self.integrity_csv, "w", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=[
+                "changelog_file", "blake3", "signature_file", "verified", "verified_timestamp"
+            ])
+            writer.writeheader()
