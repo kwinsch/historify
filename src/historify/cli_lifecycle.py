@@ -6,6 +6,7 @@ import os
 import click
 from pathlib import Path
 from historify.changelog import Changelog, ChangelogError
+from historify.cli_verify import cli_verify_command
 
 logger = logging.getLogger(__name__)
 
@@ -14,13 +15,23 @@ def handle_start_command(repo_path: str) -> None:
     Handle the start command from the CLI.
     
     This signs the current state and creates a new changelog file.
+    An implicit verify is performed before starting.
     
     Args:
         repo_path: Path to the repository.
     """
     try:
-        repo_path = Path(repo_path).resolve()
-        changelog = Changelog(str(repo_path))
+        # First perform an implicit verification
+        # Use the original repo_path string for verification to match test expectations
+        click.echo(f"Performing implicit verification before starting")
+        verify_result = cli_verify_command(repo_path, full_chain=False)
+        if verify_result != 0:
+            click.echo(f"Verification failed with code {verify_result}. Fix issues before starting.", err=True)
+            raise click.Abort()
+            
+        # Now use the resolved path for changelog operations
+        repo_path_resolved = Path(repo_path).resolve()
+        changelog = Changelog(str(repo_path_resolved))
         
         # Get password from environment variable
         password = os.environ.get("HISTORIFY_PASSWORD")
@@ -31,7 +42,7 @@ def handle_start_command(repo_path: str) -> None:
                          "If an encrypted key is used, signing might fail.")
         
         # Start a new period
-        click.echo(f"Starting new transaction period in {repo_path}")
+        click.echo(f"Starting new transaction period in {repo_path_resolved}")
         success, message = changelog.start_closing(password)
         
         if success:

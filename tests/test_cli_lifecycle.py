@@ -157,11 +157,13 @@ class TestLifecycleImplementation:
             mock_sign.assert_called_once()
             mock_create.assert_called()
             mock_write.assert_called()
-    
+
+    @patch('historify.cli_lifecycle.cli_verify_command')
     @patch('historify.cli_lifecycle.Changelog')
-    def test_cli_start_command(self, mock_changelog_class):
+    def test_cli_start_command(self, mock_changelog_class, mock_verify_command):
         """Test CLI start command."""
-        # Set up mock
+        # Set up mocks
+        mock_verify_command.return_value = 0  # Verification succeeds
         mock_changelog = MagicMock()
         mock_changelog.start_closing.return_value = (True, "Success message")
         mock_changelog.minisign_key = None  # No need for password prompt
@@ -173,6 +175,8 @@ class TestLifecycleImplementation:
             os.makedirs("repo_dir/changes")
             with open("repo_dir/db/config", "w") as f:
                 f.write("[repository]\nname = test-repo\n")
+                # Add hash algorithms config to pass verification
+                f.write("[hash]\nalgorithms = blake3,sha256\n")
             
             # Temporarily remove HISTORIFY_PASSWORD from environment if it exists
             old_env = os.environ.get("HISTORIFY_PASSWORD")
@@ -184,10 +188,12 @@ class TestLifecycleImplementation:
                 result = self.runner.invoke(start_transaction, ["repo_dir"])
                 
                 assert result.exit_code == 0
+                assert "Performing implicit verification" in result.output
                 assert "Starting new transaction period" in result.output
                 assert "Success" in result.output
                 
-                # Verify the changelog method was called
+                # Verify the methods were called - now using exact string match
+                mock_verify_command.assert_called_once_with("repo_dir", full_chain=False)
                 mock_changelog_class.assert_called_once()
                 mock_changelog.start_closing.assert_called_once_with(None)
             finally:
@@ -195,10 +201,12 @@ class TestLifecycleImplementation:
                 if old_env is not None:
                     os.environ["HISTORIFY_PASSWORD"] = old_env
     
+    @patch('historify.cli_lifecycle.cli_verify_command')
     @patch('historify.cli_lifecycle.Changelog')
-    def test_cli_start_with_env_password(self, mock_changelog_class):
+    def test_cli_start_with_env_password(self, mock_changelog_class, mock_verify_command):
         """Test CLI start command with password from environment variable."""
-        # Set up mock
+        # Set up mocks
+        mock_verify_command.return_value = 0  # Verification succeeds
         mock_changelog = MagicMock()
         mock_changelog.start_closing.return_value = (True, "Success message")
         mock_changelog.minisign_key = "some_key_path"  # Path that will trigger password check
@@ -210,6 +218,8 @@ class TestLifecycleImplementation:
             os.makedirs("repo_dir/changes")
             with open("repo_dir/db/config", "w") as f:
                 f.write("[repository]\nname = test-repo\n")
+                # Add hash algorithms config to pass verification
+                f.write("[hash]\nalgorithms = blake3,sha256\n")
             
             # Set environment variable
             old_env = os.environ.get("HISTORIFY_PASSWORD")
@@ -232,10 +242,12 @@ class TestLifecycleImplementation:
                 else:
                     os.environ.pop("HISTORIFY_PASSWORD", None)
     
+    @patch('historify.cli_lifecycle.cli_verify_command')
     @patch('historify.cli_lifecycle.Changelog')
-    def test_cli_closing_command(self, mock_changelog_class):
+    def test_cli_closing_command(self, mock_changelog_class, mock_verify_command):
         """Test CLI closing command."""
-        # Set up mock
+        # Set up mocks
+        mock_verify_command.return_value = 0  # Verification succeeds
         mock_changelog = MagicMock()
         mock_changelog.start_closing.return_value = (True, "Success message")
         mock_changelog.minisign_key = None  # No need for password prompt
@@ -247,6 +259,8 @@ class TestLifecycleImplementation:
             os.makedirs("repo_dir/changes")
             with open("repo_dir/db/config", "w") as f:
                 f.write("[repository]\nname = test-repo\n")
+                # Add hash algorithms config to pass verification
+                f.write("[hash]\nalgorithms = blake3,sha256\n")
             
             # Temporarily remove HISTORIFY_PASSWORD from environment if it exists
             old_env = os.environ.get("HISTORIFY_PASSWORD")
@@ -260,10 +274,38 @@ class TestLifecycleImplementation:
                 assert result.exit_code == 0
                 assert "Success" in result.output
                 
-                # Verify the changelog method was called
+                # Verify the verification and changelog methods were called
+                mock_verify_command.assert_called_once_with("repo_dir", full_chain=False)
                 mock_changelog_class.assert_called_once()
                 mock_changelog.start_closing.assert_called_once_with(None)
             finally:
                 # Restore environment
                 if old_env is not None:
                     os.environ["HISTORIFY_PASSWORD"] = old_env
+                    
+    @patch('historify.cli_lifecycle.cli_verify_command')
+    @patch('historify.cli_lifecycle.Changelog')
+    def test_cli_start_with_verification_failure(self, mock_changelog_class, mock_verify_command):
+        """Test CLI start command with verification failure."""
+        # Set up verify mock to fail
+        mock_verify_command.return_value = 3  # Verification fails
+        mock_changelog = MagicMock()
+        mock_changelog_class.return_value = mock_changelog
+        
+        with self.runner.isolated_filesystem():
+            # Create a simple repository structure
+            os.makedirs("repo_dir/db")
+            os.makedirs("repo_dir/changes")
+            with open("repo_dir/db/config", "w") as f:
+                f.write("[repository]\nname = test-repo\n")
+            
+            # Run start command
+            result = self.runner.invoke(start_transaction, ["repo_dir"])
+            
+            # Should fail because verification failed
+            assert result.exit_code != 0
+            assert "Verification failed" in result.output
+            
+            # Verify methods were called/not called
+            mock_verify_command.assert_called_once()
+            mock_changelog.start_closing.assert_not_called()  # Should not reach this point
