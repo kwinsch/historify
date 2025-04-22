@@ -79,27 +79,29 @@ def add_category(category_name, data_path, repo_path):
 
 @cli.command("start")
 @click.argument("repo_path", type=click.Path(exists=True), default=".")
-def start_transaction(repo_path):
+@click.option("--password", help="Minisign key password")
+def start_transaction(repo_path, password):
     """
     Sign the current state and prepare for new changes.
     
     Signs db/seed.bin for a new repo or the latest changelog file, then creates
     the next changelog file.
     """
-    click.echo(f"Starting new transaction period in {repo_path}")
-    # Placeholder for actual implementation
+    from historify.cli_lifecycle import handle_start_command
+    handle_start_command(repo_path, password)
 
 @cli.command()
 @click.argument("repo_path", type=click.Path(exists=True), default=".")
-def closing(repo_path):
+@click.option("--password", help="Minisign key password")
+def closing(repo_path, password):
     """
     Close the current changelog and prepare for the next period.
     
     Functionally equivalent to the 'start' command.
     """
-    click.echo(f"Closing current changelog in {repo_path}")
-    # Placeholder for actual implementation
-
+    from historify.cli_lifecycle import handle_closing_command
+    handle_closing_command(repo_path, password)
+    
 @cli.command()
 @click.argument("repo_path", type=click.Path(exists=True), default=".")
 @click.option("--category", help="Filter scan to specific category")
