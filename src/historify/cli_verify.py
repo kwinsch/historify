@@ -207,6 +207,22 @@ def rebuild_integrity_csv(repo_path: str) -> bool:
         logger.error(f"Error rebuilding integrity file: {e}")
         raise VerifyError(f"Error rebuilding integrity file: {e}")
 
+def get_last_signed_changelog(changelog_files: List[Path]) -> Optional[Path]:
+    """
+    Find the last changelog file that has a signature.
+    
+    Args:
+        changelog_files: List of changelog files sorted chronologically.
+        
+    Returns:
+        Path to the last signed changelog, or None if no signed changelogs exist.
+    """
+    for changelog_file in reversed(changelog_files):
+        sig_file = changelog_file.with_suffix(".csv.minisig")
+        if sig_file.exists():
+            return changelog_file
+    return None
+
 def verify_full_chain(repo_path: str) -> Tuple[bool, List[Dict[str, str]]]:
     """
     Verify the entire chain of changelogs.
@@ -288,33 +304,41 @@ def verify_full_chain(repo_path: str) -> Tuple[bool, List[Dict[str, str]]]:
             # If there are no changelog files, but the seed is verified, that's valid
             return chain_intact, issues
         
+        # Get the current changelog (this one can be unsigned)
+        current_changelog = changelog.get_current_changelog()
+            
         # Process each changelog independently, verifying its first transaction against the correct reference
-        for changelog_file in changelog_files:
+        for i, changelog_file in enumerate(changelog_files):
             # Verify the changelog file's signature if it exists
             sig_file = changelog_file.with_suffix(".csv.minisig")
-            if sig_file.exists():
-                try:
-                    success, message = minisign_verify(changelog_file, pubkey_path)
-                    if not success:
-                        issues.append({
-                            "file": str(changelog_file),
-                            "issue": f"Signature verification failed: {message}"
-                        })
-                        chain_intact = False
-                except MinisignError as e:
-                    issues.append({
-                        "file": str(changelog_file),
-                        "issue": f"Signature verification error: {e}"
-                    })
-                    chain_intact = False
+            
+            # Skip signature check for the current open changelog
+            if current_changelog and changelog_file == current_changelog:
+                logger.debug(f"Skipping signature check for current open changelog: {changelog_file}")
             else:
-                # Last file can be unsigned (open changelog)
-                if changelog_file != changelog_files[-1]:
+                # For past changelogs, signature is required
+                if not sig_file.exists():
                     issues.append({
                         "file": str(changelog_file),
                         "issue": "Signature file missing for non-latest changelog"
                     })
                     chain_intact = False
+                else:
+                    # Verify signature
+                    try:
+                        success, message = minisign_verify(changelog_file, pubkey_path)
+                        if not success:
+                            issues.append({
+                                "file": str(changelog_file),
+                                "issue": f"Signature verification failed: {message}"
+                            })
+                            chain_intact = False
+                    except MinisignError as e:
+                        issues.append({
+                            "file": str(changelog_file),
+                            "issue": f"Signature verification error: {e}"
+                        })
+                        chain_intact = False
             
             # Now verify the first transaction references the correct file
             try:
@@ -392,7 +416,7 @@ def verify_full_chain(repo_path: str) -> Tuple[bool, List[Dict[str, str]]]:
                                 "issue": f"Hash chain broken: expected {expected_hash}, got {stored_hash}"
                             })
                             chain_intact = False
-            except (OSError, Error) as e:
+            except (OSError, Exception) as e:
                 issues.append({
                     "file": str(changelog_file),
                     "issue": f"Error reading changelog file: {e}"
