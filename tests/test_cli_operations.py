@@ -25,9 +25,10 @@ class TestOperationsImplementation:
         self.db_dir = self.test_repo_path / "db"
         self.db_dir.mkdir(exist_ok=True)
         
-        # Create a minimal config file
+        # Create a minimal config file with proper hash algorithms
         with open(self.db_dir / "config", "w") as f:
             f.write("[repository]\nname = test-repo\n")
+            f.write("[hash]\nalgorithms = blake3,sha256\n")
             
         # Create changes directory
         self.changes_dir = self.test_repo_path / "changes"
@@ -42,6 +43,28 @@ class TestOperationsImplementation:
         
         with open(self.data_dir / "test_file2.txt", "w") as f:
             f.write("Test content 2")
+            
+        # Create test minisign key files for verify command
+        self.key_dir = self.test_repo_path / "keys"
+        self.key_dir.mkdir(exist_ok=True)
+        
+        self.minisign_key = self.key_dir / "historify.key"
+        self.minisign_pub = self.key_dir / "historify.pub"
+        
+        # Create mock minisign key files
+        with open(self.minisign_key, "w") as f:
+            f.write("untrusted comment: minisign unencrypted secret key\n")
+            f.write("TESTKEY123456789\n")
+        
+        with open(self.minisign_pub, "w") as f:
+            f.write("untrusted comment: minisign public key\n")
+            f.write("TESTPUB987654321\n")
+            
+        # Add minisign keys to config
+        with open(self.db_dir / "config", "a") as f:
+            f.write("[minisign]\n")
+            f.write(f"key = {self.minisign_key}\n")
+            f.write(f"pub = {self.minisign_pub}\n")
     
     def teardown_method(self):
         """Clean up test environment."""
@@ -99,19 +122,27 @@ class TestOperationsImplementation:
             assert "data" in result
             mock_scan_category.assert_called_once()
     
-    def test_verify_command(self):
+    @patch('historify.cli.cli_verify_command')
+    def test_verify_command(self, mock_verify):
         """Test the verify command."""
+        # Setup mock to return success
+        mock_verify.return_value = 0
+        
         result = self.runner.invoke(verify, [str(self.test_repo_path)])
         
         assert result.exit_code == 0
-        assert "Verifying recent logs in" in result.output
+        mock_verify.assert_called_once_with(str(self.test_repo_path), False)
     
-    def test_verify_full_chain(self):
+    @patch('historify.cli.cli_verify_command')
+    def test_verify_full_chain(self, mock_verify):
         """Test verify with full-chain option."""
+        # Setup mock to return success
+        mock_verify.return_value = 0
+        
         result = self.runner.invoke(verify, [str(self.test_repo_path), "--full-chain"])
         
         assert result.exit_code == 0
-        assert "Verifying full chain in" in result.output
+        mock_verify.assert_called_once_with(str(self.test_repo_path), True)
     
     def test_status_command(self):
         """Test the status command."""

@@ -14,6 +14,7 @@ from historify.cli_lifecycle import handle_start_command, handle_closing_command
 from historify.cli_scan import cli_scan_command
 from historify.cli_category import handle_add_category_command
 from historify.cli_duplicates import handle_duplicates_command
+from historify.cli_verify import cli_verify_command
 
 
 # Configure logging
@@ -125,9 +126,9 @@ def verify(repo_path, full_chain):
     By default, verifies from the latest signed changelog forward.
     With --full-chain, verifies the entire chain of logs.
     """
-    mode = "full chain" if full_chain else "recent logs"
-    click.echo(f"Verifying {mode} in {repo_path}")
-    # Placeholder for actual implementation
+    exit_code = cli_verify_command(repo_path, full_chain)
+    if exit_code != 0:
+        raise click.Abort()
 
 @cli.command()
 @click.argument("repo_path", type=click.Path(exists=True), default=".")
