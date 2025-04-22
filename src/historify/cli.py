@@ -7,6 +7,9 @@ import os
 import logging
 from pathlib import Path
 from historify.cli_init import handle_init_command
+from historify.cli_config import handle_config_command
+from historify.cli_config import handle_check_config_command
+
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -49,8 +52,7 @@ def config(key, value, repo_path):
     
     Keys use section.option format (e.g., category.default.path, hash.algorithms, minisign.key).
     """
-    click.echo(f"Setting {key}={value} in {repo_path}")
-    # Placeholder for actual implementation
+    handle_config_command(repo_path, key, value)
 
 @cli.command()
 @click.argument("repo_path", type=click.Path(exists=True), default=".")
@@ -58,8 +60,8 @@ def check_config(repo_path):
     """
     Verify the configuration of the repository.
     """
-    click.echo(f"Checking configuration in {repo_path}")
-    # Placeholder for actual implementation
+    from historify.cli_config import handle_check_config_command
+    handle_check_config_command(repo_path)
 
 @cli.command()
 @click.argument("category_name", required=True)

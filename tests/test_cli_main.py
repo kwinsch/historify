@@ -1,7 +1,7 @@
 import pytest
 import logging
 from click.testing import CliRunner
-from historify.cli import cli, main
+from historify.cli import cli, main, init
 
 def test_cli_help():
     """Test the CLI shows help information."""
@@ -14,10 +14,14 @@ def test_cli_help():
 def test_cli_verbose():
     """Test the CLI verbose mode."""
     runner = CliRunner()
-    # We need to use a valid subcommand with --verbose
-    result = runner.invoke(cli, ["--verbose", "check-config", "."])
-    assert result.exit_code == 0
-    assert "Verbose mode enabled" in result.output
+    with runner.isolated_filesystem():
+        # First initialize a repo
+        runner.invoke(init, ["./test_repo", "--name", "test-repo"])
+        
+        # Then use it with verbose mode
+        result = runner.invoke(cli, ["--verbose", "check-config", "./test_repo"])
+        assert result.exit_code == 0
+        assert "Verbose mode enabled" in result.output
 
 def test_main_function():
     """Test the main function doesn't crash."""
