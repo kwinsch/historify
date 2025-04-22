@@ -188,6 +188,22 @@ class Changelog:
         except MinisignError as e:
             raise ChangelogError(f"Minisign error: {e}")
     
+    def sync_file(self, file_path: Path) -> None:
+        """
+        Sync a file to disk to ensure changes are written.
+        
+        Args:
+            file_path: Path to the file to sync.
+        """
+        try:
+            # Open the file in append mode (doesn't truncate the file)
+            with open(file_path, "a") as f:
+                # Force OS to sync file to disk
+                os.fsync(f.fileno())
+            logger.debug(f"File synced to disk: {file_path}")
+        except Exception as e:
+            logger.warning(f"Failed to sync file to disk (continuing anyway): {e}")
+    
     def write_closing_transaction(self, prev_file: Optional[Path] = None) -> bool:
         """
         Write a closing transaction to the current changelog.
@@ -222,7 +238,14 @@ class Changelog:
         
         # If we have a previous file, add its hash to the blake3 field
         if prev_file and prev_file.exists():
-            transaction["blake3"] = hash_file(prev_file)["blake3"]
+            # Ensure the file is completely written to disk before hashing
+            self.sync_file(prev_file)
+            
+            # Calculate hash after ensuring file is synced
+            hash_result = hash_file(prev_file)
+            transaction["blake3"] = hash_result["blake3"]
+            logger.debug(f"Using hash for closing transaction: {transaction['blake3']}")
+            
             if prev_file.name == "seed.bin":
                 transaction["path"] = "db/seed.bin"
             else:
@@ -324,6 +347,10 @@ class Changelog:
                     logger.info("No open changelog. Signing the seed file.")
                     self.sign_file(self.seed_file, password)
                     
+                    # Ensure the file is written to disk
+                    self.sync_file(self.seed_file)
+                    self.sync_file(self.seed_sig_file)
+                    
                     # Create the first changelog and add a closing entry
                     new_changelog = self.create_new_changelog()
                     
@@ -348,9 +375,16 @@ class Changelog:
                     
                     # Write a closing transaction referencing the previous changelog or seed
                     if latest_signed:
+                        # Ensure the file is written to disk
+                        self.sync_file(latest_signed)
+                        self.sync_file(latest_signed.with_suffix(".csv.minisig"))
+                        
                         self.write_closing_transaction(latest_signed)
                     else:
                         # If no previous changelog, reference the seed
+                        self.sync_file(self.seed_file)
+                        self.sync_file(self.seed_sig_file)
+                        
                         self.write_closing_transaction(self.seed_file)
                     
                     return True, f"Created new changelog: {new_changelog.name}"
@@ -361,7 +395,17 @@ class Changelog:
             # We have an open changelog, close it by signing
             try:
                 # Sign the current changelog
+                logger.debug(f"Signing file: {current_changelog}")
                 self.sign_file(current_changelog, password)
+                
+                # Ensure the file and signature are written to disk
+                self.sync_file(current_changelog)
+                sig_file = current_changelog.with_suffix(".csv.minisig")
+                self.sync_file(sig_file)
+                
+                # Calculate hash after ensuring file is synced
+                prev_hash = hash_file(current_changelog)["blake3"]
+                logger.debug(f"Hash of signed file: {prev_hash}")
                 
                 # Create a new changelog
                 new_changelog = self.create_new_changelog()

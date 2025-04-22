@@ -16,6 +16,7 @@ from historify.cli_category import handle_add_category_command
 from historify.cli_duplicates import handle_duplicates_command
 from historify.cli_verify import cli_verify_command
 from historify.cli_snapshot import handle_snapshot_command
+from historify.cli_status import cli_status_command
 
 
 # Configure logging
@@ -140,9 +141,9 @@ def status(repo_path, category):
     
     Shows counts of tracked files, recent changes, and signature status.
     """
-    category_str = f" for category '{category}'" if category else ""
-    click.echo(f"Status of {repo_path}{category_str}")
-    # Placeholder for actual implementation
+    exit_code = cli_status_command(repo_path, category)
+    if exit_code != 0:
+        raise click.Abort()
 
 @cli.command()
 @click.argument("repo_path", type=click.Path(exists=True), default=".")
