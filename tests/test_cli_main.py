@@ -1,3 +1,14 @@
+"""
+Tests for the main CLI functionality.
+"""
+import pytest
+import os
+from pathlib import Path
+from click.testing import CliRunner
+from unittest.mock import patch
+
+from historify.cli import scan, verify, status
+
 def test_scan_command():
     """Test the scan command."""
     runner = CliRunner()
