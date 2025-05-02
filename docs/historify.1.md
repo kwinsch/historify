@@ -15,18 +15,19 @@ Historify is designed for secure tracking of files that require a high level of 
 A historify repository contains:
 
 - `db/config`: Repository configuration file
+- `db/config.csv`: CSV version of the configuration file
 - `db/integrity.csv`: CSV database containing integrity verification information
 - `db/seed.bin`: Random seed file for integrity
 - `db/seed.bin.minisig`: Mandatory signature for seed
-- `db/keys/KEYID.pub`: Archived public keys where `KEYID` is used to uniqly identify the key and map it to the corresponding signature.I
-- `changes/`: Directory containing change logs
+- `db/keys/`: Directory containing archived public keys
+- `changes/`: Directory containing change logs (location can be configured)
 - `changes/changelog-YYYY-MM-DD.csv`: Daily change logs
-- `changes/changelog-YYYY-MM-DD.csv.minisig`: Signature files for change logs. File created at closing event.
+- `changes/changelog-YYYY-MM-DD.csv.minisig`: Signature files for change logs created at closing events
 
 ## COMMANDS
 
-**init** *repo_path*
-: Initialize a new repository at *repo_path* with name *name*. Creates a configuration file (`db/config`), integrity CSV (`db/integrity.csv`), and random seed file (`db/seed.bin`).
+**init** *repo_path* [`--name` *name*]
+: Initialize a new repository at *repo_path*. Creates a configuration file (`db/config`), configuration CSV (`db/config.csv`), integrity CSV (`db/integrity.csv`), and random seed file (`db/seed.bin`). If `--name` is not specified, the directory name is used as the repository name.
 
 **config** *key* *value* *repo_path*
 : Set a configuration *key* to *value* in the repository. Keys use `section.option` format (e.g., `category.default.path`, `hash.algorithms`, `minisign.key`). Logs a `config` transaction.
@@ -38,7 +39,7 @@ A historify repository contains:
 : Add a data category with specified path for organizing content within the repository. The *data_path* can be a relative path within the repository or an absolute path to an external location. Updates configuration and database to track the new category. At least one category must be present to start tracking files.
 
 **start|closing** [*repo_path*]
-: Signs the `db/seed.bin` in case of a new repo or the latest `db/changelog-YYYY-MM-DD.csv` file. On successful signing, the first|next `db/changelog-YYYY-MM-DD.csv` file is created. The command issues an implicit prior `verify`. A new file can not be created without prior closing (signing) the last open file. Logs a `closing` transaction to the new changelog with the hash of the last seed or changelog file, closing the chain. The signature is placed in the same folder as the original file with a `.minisig` extension.
+: Signs the `db/seed.bin` in case of a new repo or the latest `changelog-YYYY-MM-DD.csv` file. On successful signing, the first/next `changelog-YYYY-MM-DD.csv` file is created. The signature is placed in the same folder as the original file with a `.minisig` extension. A new changelog file cannot be created without signing the previous one first. Logs a `closing` transaction to the new changelog with the hash of the previous file (seed or changelog), establishing the hash chain for integrity verification.
 
 **scan** [*repo_path*] [`--category` *category*]
 : Scan the repository's data categories for file changes. Automatically detects and logs changes (`new`, `changed`, `move`, `deleted`) with cryptographic hashes to the latest open changelog file. The scan operation intelligently identifies new files, modified content, files that have been moved or renamed, and files that have been deleted.
@@ -58,8 +59,8 @@ A historify repository contains:
 **comment** *message* [*repo_path*]
 : Add an administrative comment to the change log. Useful for documenting important events or changes. Logs a `comment`  with the specified message.
 
-**snapshot** *output_path* [*repo_path*] [`--full`] [`--media[=bd-r]`]
-: Create a compressed archive (tar.gz) of the current repository state for archiving purposes. Includes all data files, change logs, seed, signatures, and configuration directly residing under the repo path. If `--full` is specified, all external data files and folders referenced by the repository are backed up as a separate tar.gz archive in the same output path as the specified main archive. If `--media` is specified, the tar.gz files are packed in a iso file with UDF filesystem, ready to be burned to a single layer BD-ROM disk. Other media types are currently not supported. If the content exceed the expected media size, the tar.gz are split.
+**snapshot** *output_path* [*repo_path*] [`--full`] [`--media`]
+: Create a compressed archive (tar.gz) of the current repository state for archiving purposes. Includes all data files, change logs, seed, signatures, and configuration directly residing under the repo path. If `--full` is specified, all external data files and folders referenced by the repository are backed up as a separate tar.gz archive in the same output path as the specified main archive. If `--media` is specified, the tar.gz files are packed in an ISO file with UDF 2.60 filesystem, ready to be burned to a single layer BD-R disk (25GB). Other media types are currently not supported. If the content exceeds the expected media size, the archives are split into multiple ISO files.
 
 ## OPTIONS
 
@@ -177,10 +178,23 @@ historify scan /path/to/project
 historify scan --category source-code /path/to/project
 ```
 
-Set up automated scanning via cron:
+Set up secure automated scanning:
 ```bash
-# Add to crontab to run daily at 2am
-0 2 * * * HISTORIFY_PASSWORD="mypassword" /usr/local/bin/historify scan /path/to/project
+# 1. Create a credentials file with restricted permissions
+sudo mkdir -p /etc/historify
+echo 'HISTORIFY_PASSWORD="your_password"' | sudo tee /etc/historify/credentials > /dev/null
+sudo chmod 600 /etc/historify/credentials
+
+# 2. Create a wrapper script that sources credentials
+sudo tee /usr/local/bin/historify-scan > /dev/null << 'EOF'
+#!/bin/bash
+source /etc/historify/credentials
+/usr/local/bin/historify scan "$@"
+EOF
+sudo chmod 700 /usr/local/bin/historify-scan
+
+# 3. Add to crontab (without exposing password)
+0 2 * * * /usr/local/bin/historify-scan /path/to/project
 ```
 
 Add a comment about recent activity:
@@ -218,24 +232,36 @@ historify verify --full-chain /path/to/project
 Create an archive snapshot:
 ```bash
 historify snapshot /backup/project-2025-04-21.tar.gz /path/to/project
+
+# Create a snapshot with external data
+historify snapshot /backup/project-2025-04-21.tar.gz /path/to/project --full
+
+# Create a snapshot packaged for BD-R media
+historify snapshot /backup/project-2025-04-21.tar.gz /path/to/project --media
 ```
 
 ## FILES
 
 `<repo_path>/db/config`
-: Repository configuration file
+: Repository configuration file (INI format)
+
+`<repo_path>/db/config.csv`
+: Repository configuration in CSV format
 
 `<repo_path>/db/integrity.csv`
 : CSV file containing integrity verification information
 
 `<repo_path>/db/seed.bin`
-: Random seed file for integrity
+: Random seed file for integrity (1MB of random data)
 
 `<repo_path>/db/seed.bin.minisig`
-: Signature files for seed
+: Signature file for seed
+
+`<repo_path>/db/keys/`
+: Directory containing archived copies of public keys
 
 `<repo_path>/changes/changelog-YYYY-MM-DD.csv`
-: Daily change logs
+: Daily change logs (location configurable via changes.directory)
 
 `<repo_path>/changes/changelog-YYYY-MM-DD.csv.minisig`
 : Signature files for change logs

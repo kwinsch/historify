@@ -28,62 +28,46 @@ pip install historify
 
 ## Quick Start
 
-### Initialize a Repository
-
 ```bash
-# Create a new repository
+# Setup
 historify init /path/to/repository --name "My Repository"
-
-# Configure minisign keys
 historify config minisign.key /path/to/minisign.key /path/to/repository
 historify config minisign.pub /path/to/minisign.pub /path/to/repository
-
-# Add a data category
 historify add-category documents docs /path/to/repository
-
-# Start tracking changes
 historify start /path/to/repository
+
+# Daily operations
+historify scan /path/to/repository          # Detect and log changes
+historify comment "Updated docs" /path/to/repository  # Add a comment
+historify closing /path/to/repository       # Sign and create new log
+historify verify /path/to/repository        # Verify integrity
+
+# Information and export
+historify status /path/to/repository        # Show repository status
+historify log /path/to/repository           # View change history
+historify snapshot /path/to/output.tar.gz /path/to/repository  # Create backup
 ```
 
-### Daily Usage
+## Automation
+
+Example of secure daily automated scanning:
 
 ```bash
-# Scan for changes
-historify scan /path/to/repository
+# 1. Create a secure credentials file
+sudo mkdir -p /etc/historify
+echo 'HISTORIFY_PASSWORD="your_password"' | sudo tee /etc/historify/credentials > /dev/null
+sudo chmod 600 /etc/historify/credentials
 
-# Add a comment about recent activity
-historify comment "Updated documentation files" /path/to/repository
+# 2. Create a wrapper script that sources credentials
+sudo tee /usr/local/bin/historify-scan > /dev/null << 'EOF'
+#!/bin/bash
+source /etc/historify/credentials
+/usr/local/bin/historify scan "$@"
+EOF
+sudo chmod 700 /usr/local/bin/historify-scan
 
-# Close current changelog and start a new one
-historify closing /path/to/repository
-
-# Verify the integrity of your repository
-historify verify /path/to/repository
-
-# Verify the full chain from seed to the latest signed changelog
-historify verify --full-chain /path/to/repository
-```
-
-### View Repository Information
-
-```bash
-# View repository status
-historify status /path/to/repository
-
-# View change history
-historify log /path/to/repository
-
-# Find duplicate files
-historify duplicates /path/to/repository
-```
-
-## Setting Up Automated Tracking
-
-You can set up automated scanning using cron:
-
-```bash
-# Add to crontab to run daily at 2am
-0 2 * * * HISTORIFY_PASSWORD="mypassword" /usr/local/bin/historify scan /path/to/repository
+# 3. Add to crontab (without exposing password)
+# 0 2 * * * /usr/local/bin/historify-scan /path/to/repository
 ```
 
 ## Environment Variables
@@ -92,7 +76,7 @@ You can set up automated scanning using cron:
 
 ## Documentation
 
-For complete documentation on all commands and options, refer to the [manual page](docs/historify.1.md).
+For complete documentation on all commands, options, and repository structure, refer to the [manual page](docs/historify.1.md).
 
 ### Common Commands
 
@@ -105,44 +89,25 @@ For complete documentation on all commands and options, refer to the [manual pag
 | `scan` | Scan for changes in tracked files |
 | `verify` | Verify repository integrity |
 | `log` | View change history |
-| `comment` | Add administrative comments |
 | `status` | Display repository status |
-| `duplicates` | Find duplicate files |
 | `snapshot` | Create a compressed archive of the repository |
 
-## Change Detection
+## Concepts
 
-Historify automatically detects and tracks different types of file changes:
+Historify provides secure file tracking through:
 
-- **New Files**: Files that appear for the first time in a category
-- **Changed Files**: Modifications to existing files (content changes)
-- **Moved Files**: Files that have been renamed or moved to a different location
-- **Deleted Files**: Files that no longer exist in the category
-
-Each scan operation identifies these changes automatically and logs appropriate transactions in the changelog.
-
-## Repository Structure
-
-```
-repository/
-├── db/
-│   ├── config                  # Repository configuration
-│   ├── integrity.csv           # Integrity verification information
-│   └── seed.bin                # Random seed file 
-│   └── seed.bin.minisig        # Signature for seed
-└── changes/
-    ├── changelog-YYYY-MM-DD.csv       # Daily change logs
-    └── changelog-YYYY-MM-DD.csv.minisig # Signatures for change 
-```
+- **Automatic Change Detection**: Identifies new, changed, moved, and deleted files
+- **Cryptographic Hashing**: Uses BLAKE3 and SHA256 for reliable content verification
+- **Signature Chain**: Creates a verifiable chain of custody with minisign signatures
+- **Logical Categorization**: Organizes content through flexible category definitions
 
 ## Integrity Verification
 
-Historify provides two levels of integrity verification:
+Historify combines file hashing and cryptographic signatures to create a tamper-evident chain of custody:
 
-1. **File Integrity**: Verifies that files haven't been modified since scanning
-2. **Log Integrity**: Verifies the changelog files themselves through:
-   - Cryptographic signatures using minisign
-   - Hash chaining where each changelog references the previous file
+- **File Integrity**: Verifies files against stored hash values
+- **Chain Verification**: Links changelogs through hash references
+- **Cryptographic Signatures**: Secures change history with minisign
 
 ## Contributions
 
