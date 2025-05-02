@@ -206,3 +206,27 @@ class TestConfigImplementation:
             assert result.exit_code == 0
             assert "Configuration issues found:" in result.output
             assert "repository.name" in result.output
+
+def test_config_backup_public_key(self):
+    """Test public key backup when setting minisign.pub configuration."""
+    # Create a test public key
+    pub_key_path = self.test_repo_path / "test.pub"
+    with open(pub_key_path, "w") as f:
+        f.write("untrusted comment: minisign public key TEST123\n")
+        f.write("TESTKEY123456789\n")
+    
+    # Set the minisign.pub config value
+    config = RepositoryConfig(str(self.test_repo_path))
+    config.set("minisign.pub", str(pub_key_path))
+    
+    # Verify the key was backed up
+    keys_dir = self.test_repo_path / "db" / "keys"
+    assert keys_dir.exists()
+    
+    # Should have the key backed up
+    backed_up_keys = list(keys_dir.glob("*.pub"))
+    assert len(backed_up_keys) == 1
+    
+    # Verify content matches
+    with open(pub_key_path, "r") as src, open(backed_up_keys[0], "r") as dest:
+        assert src.read() == dest.read()

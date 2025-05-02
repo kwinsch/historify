@@ -1,3 +1,4 @@
+# src/historify/cli_config.py with modifications
 """
 Implementation of config commands for historify.
 """
@@ -5,6 +6,7 @@ import logging
 import click
 from pathlib import Path
 from historify.config import RepositoryConfig, ConfigError
+from historify.key_manager import backup_public_key, KeyError
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +27,15 @@ def set_config(repo_path: str, key: str, value: str) -> bool:
     """
     try:
         config = RepositoryConfig(repo_path)
+        
+        # Backup public key if this is setting minisign.pub
+        if key == "minisign.pub":
+            try:
+                backup_public_key(repo_path, value)
+            except KeyError as e:
+                logger.warning(f"Failed to backup public key: {e}")
+                # Continue anyway, as this is not critical
+        
         return config.set(key, value)
     except ConfigError as e:
         logger.error(f"Configuration error: {e}")

@@ -314,6 +314,15 @@ def cli_status_command(repo_path: str, category: Optional[str] = None) -> int:
                 
                 click.echo(f"  Minisign private key: {key_status}")
                 click.echo(f"  Minisign public key: {pub_status}")
+                
+                # Add information about backed up keys
+                try:
+                    from historify.key_manager import list_backed_up_keys
+                    backed_up_keys = list_backed_up_keys(repo_path)
+                    if backed_up_keys:
+                        click.echo(f"  Backed up public keys: {len(backed_up_keys)}")
+                except ImportError:
+                    pass
             except Exception:
                 # If we can't access config, just show hash algorithms
                 click.echo("\nConfiguration:")

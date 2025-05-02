@@ -177,3 +177,45 @@ class TestScanIntegration:
             entries1 = [e for e in entries if e["path"] == "test1.txt"]
             assert len(entries1) >= 3
             assert entries1[-1]["transaction_type"] == "deleted"
+
+    @patch('historify.minisign.minisign_verify')
+    @patch('historify.minisign.minisign_sign')
+    def test_key_backup_integration(self, mock_sign, mock_verify):
+        """Test public key backup throughout the command workflow."""
+        # Set up mocks for verification and signing
+        mock_sign.return_value = True
+        mock_verify.return_value = (True, "Signature verified")
+        
+        # Create a test public key
+        pub_key_path = self.test_dir / "integration_test.pub"
+        with open(pub_key_path, "w") as f:
+            f.write("untrusted comment: minisign public key INTEGRATION123\n")
+            f.write("TESTKEY123456789\n")
+        
+        # 1. Configure the public key
+        result = self.runner.invoke(config, ["minisign.pub", str(pub_key_path), str(self.repo_path)])
+        assert result.exit_code == 0
+        
+        # Verify the key was backed up during config
+        keys_dir = self.repo_path / "db" / "keys"
+        assert keys_dir.exists()
+        assert len(list(keys_dir.glob("*.pub"))) == 1
+        
+        # 2. Run verification
+        from historify.cli_verify import handle_verify_command
+        success, issues = handle_verify_command(str(self.repo_path), full_chain=True)
+        
+        # Verify the key is still backed up
+        assert len(list(keys_dir.glob("*.pub"))) == 1
+        
+        # 3. Create a second key and update config
+        pub_key2_path = self.test_dir / "integration_test2.pub"
+        with open(pub_key2_path, "w") as f:
+            f.write("untrusted comment: minisign public key INTEGRATION456\n")
+            f.write("TESTKEY987654321\n")
+        
+        result = self.runner.invoke(config, ["minisign.pub", str(pub_key2_path), str(self.repo_path)])
+        assert result.exit_code == 0
+        
+        # Verify both keys are now backed up
+        assert len(list(keys_dir.glob("*.pub"))) == 2

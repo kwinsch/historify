@@ -251,6 +251,14 @@ def verify_full_chain(repo_path: str) -> Tuple[bool, List[Dict[str, str]]]:
         # Check if public key exists
         if not Path(pubkey_path).exists():
             raise VerifyError(f"Minisign public key not found: {pubkey_path}")
+            
+        # Backup the public key
+        try:
+            from historify.key_manager import backup_public_key
+            backup_public_key(str(repo_path), pubkey_path)
+        except Exception as e:
+            logger.warning(f"Failed to backup public key: {e}")
+            # Continue anyway, as this is not critical
         
         # Get the seed file to start the verification chain
         seed_file = repo_path / "db" / "seed.bin"
@@ -462,6 +470,14 @@ def verify_recent_logs(repo_path: str) -> Tuple[bool, List[Dict[str, str]]]:
         # Check if public key exists
         if not Path(pubkey_path).exists():
             raise VerifyError(f"Minisign public key not found: {pubkey_path}")
+            
+        # Backup the public key
+        try:
+            from historify.key_manager import backup_public_key
+            backup_public_key(str(repo_path), pubkey_path)
+        except Exception as e:
+            logger.warning(f"Failed to backup public key: {e}")
+            # Continue anyway, as this is not critical
         
         # Get all changelog files sorted by date
         changelog_files = sorted(changelog.changes_dir.glob("changelog-*.csv"))

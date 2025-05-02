@@ -335,3 +335,34 @@ class TestFullChainVerification:
         assert success is True
         assert message == "Signature verified"
         mock_minisign_verify.assert_called_once_with(test_file, str(self.minisign_pub))
+
+    @patch('historify.cli_verify.minisign_verify')
+    def test_verify_full_chain_backs_up_key(self, mock_minisign_verify):
+        """Test that verify_full_chain backs up the public key."""
+        # Set up mocks
+        mock_minisign_verify.return_value = (True, "Signature verified")
+        
+        # Create a test public key
+        pub_key_path = self.test_repo_path / "verify_test.pub"
+        with open(pub_key_path, "w") as f:
+            f.write("untrusted comment: minisign public key VERIFY123\n")
+            f.write("TESTKEY123456789\n")
+        
+        # Configure the public key
+        config = RepositoryConfig(str(self.test_repo_path))
+        config.set("minisign.pub", str(pub_key_path))
+        
+        # Make sure keys directory doesn't exist yet
+        keys_dir = self.test_repo_path / "db" / "keys"
+        if keys_dir.exists():
+            shutil.rmtree(keys_dir)
+        
+        # Run verification
+        from historify.cli_verify import verify_full_chain
+        success, issues = verify_full_chain(str(self.test_repo_path))
+        
+        # Verify the key was backed up
+        assert keys_dir.exists()
+        backed_up_keys = list(keys_dir.glob("*.pub"))
+        assert len(backed_up_keys) == 1
+        assert backed_up_keys[0].stem == "VERIFY123"
