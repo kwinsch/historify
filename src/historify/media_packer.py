@@ -1,3 +1,4 @@
+# src/historify/media_packer.py
 """
 Media packing functionality for historify snapshot archives.
 
@@ -50,9 +51,11 @@ def create_iso_image(archives: List[Path], output_path: Path) -> Path:
         # Ensure output has .iso extension
         iso_path = output_path.with_suffix('.iso')
         
-        # Create a new ISO
+        # Create a new ISO with UDF 2.60 (explicitly setting UDF version)
         iso = pycdlib.PyCdlib()
-        iso.new(udf="2.60")
+        
+        # Initialize with UDF 2.60 and explicitly disable ISO9660 restrictions
+        iso.new(udf="2.60", interchange_level=4, joliet=3)
         
         # Create a temporary directory for staging
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -63,7 +66,7 @@ def create_iso_image(archives: List[Path], output_path: Path) -> Path:
                 if archive.exists():
                     shutil.copy2(archive, temp_dir_path / archive.name)
                     
-                    # Add file to ISO
+                    # Add file to ISO using UDF path (avoid ISO9660 restrictions)
                     iso.add_file(
                         str(temp_dir_path / archive.name),
                         f"/{archive.name}",
