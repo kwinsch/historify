@@ -182,19 +182,23 @@ def duplicates(repo_path, category):
     handle_duplicates_command(repo_path, category)
 
 @cli.command()
-@click.argument("output_path", type=click.Path(), required=True)
+@click.argument("output_dir", type=click.Path(), required=True)
 @click.argument("repo_path", type=click.Path(exists=True), default=".")
+@click.option("--name", help="Base name for output files (defaults to repository name)")
 @click.option("--full", is_flag=True, help="Include external category data in separate archives")
 @click.option("--media", is_flag=True, default=False, help="Create ISO image for media (default: bd-r)")
-def snapshot(output_path, repo_path, full, media):
+def snapshot(output_dir, repo_path, name, full, media):
     """
     Create a compressed archive of the current repository state.
+    
+    Saves output to OUTPUT_DIR with automatically generated filenames including date.
+    The base name can be customized with --name, otherwise the repository name is used.
     
     Includes all data files, change logs, seed, signatures, and configuration.
     With --full, creates separate archives for external categories.
     With --media, creates ISO images suitable for optical media (BD-R).
     """
-    handle_snapshot_command(output_path, repo_path, full, media)
+    handle_snapshot_command(output_dir, repo_path, name, full, media)
 
 def main():
     """Entry point for the CLI."""

@@ -101,12 +101,14 @@ class TestMediaPacker:
         iso_path = create_iso_image(archives, output_path)
         
         # Verify the result
+        # We expect output_path with .iso extension
         assert iso_path == output_path.with_suffix('.iso')
         
         # Verify PyCdlib was used correctly - updated to match actual implementation
         mock_iso.new.assert_called_once_with(udf="2.60", interchange_level=4, joliet=3)
         assert mock_iso.add_file.call_count == 2  # Once for each archive
-        mock_iso.write.assert_called_once_with(str(output_path.with_suffix('.iso')))
+        expected_iso_path = output_path.with_suffix('.iso')
+        mock_iso.write.assert_called_once_with(str(expected_iso_path))
         mock_iso.close.assert_called_once()
     
     @patch('historify.media_packer.create_iso_image')

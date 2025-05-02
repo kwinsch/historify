@@ -48,7 +48,8 @@ def create_iso_image(archives: List[Path], output_path: Path) -> Path:
         MediaPackError: If creating the ISO fails.
     """
     try:
-        # Ensure output has .iso extension
+        # The output_path is now the base filename without extension
+        # Add .iso extension to create the ISO path
         iso_path = output_path.with_suffix('.iso')
         
         # Create a new ISO with UDF 2.60 (explicitly setting UDF version)
@@ -154,7 +155,9 @@ def pack_for_bd_r(archives: List[Path], output_base_path: Path) -> List[Path]:
         # Create an ISO for each group
         iso_paths = []
         for i, group in enumerate(archive_groups, 1):
-            group_output = output_base_path.parent / f"{output_base_path.stem}-disc{i}{output_base_path.suffix}"
+            # Create path with appropriate disc numbering
+            # The output_base_path is now just the base filename without extension
+            group_output = output_base_path.parent / f"{output_base_path.name}-disc{i}"
             iso_path = create_iso_image(group, group_output)
             iso_paths.append(iso_path)
             

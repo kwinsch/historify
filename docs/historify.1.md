@@ -59,8 +59,8 @@ A historify repository contains:
 **comment** *message* [*repo_path*]
 : Add an administrative comment to the change log. Useful for documenting important events or changes. Logs a `comment`  with the specified message.
 
-**snapshot** *output_path* [*repo_path*] [`--full`] [`--media`]
-: Create a compressed archive (tar.gz) of the current repository state for archiving purposes. Includes all data files, change logs, seed, signatures, and configuration directly residing under the repo path. If `--full` is specified, all external data files and folders referenced by the repository are backed up as a separate tar.gz archive in the same output path as the specified main archive. If `--media` is specified, the tar.gz files are packed in an ISO file with UDF 2.60 filesystem, ready to be burned to a single layer BD-R disk (25GB). Other media types are currently not supported. If the content exceeds the expected media size, the archives are split into multiple ISO files.
+**snapshot** *output_dir* [*repo_path*] [`--name` *name*] [`--full`] [`--media`]
+: Create a compressed archive (tar.gz) of the current repository state for archiving purposes. Saves files to *output_dir* with automatically generated filenames that include the current date. The base name can be customized with `--name` (defaults to repository name). Filenames will be sanitized to use only alphanumeric characters and hyphens. Includes all data files, change logs, seed, signatures, and configuration directly residing under the repo path. If `--full` is specified, all external data files and folders referenced by the repository are backed up as separate tar.gz archives in the same output directory. If `--media` is specified, the tar.gz files are packed in ISO files with UDF 2.60 filesystem, ready to be burned to single layer BD-R disks (25GB). Other media types are currently not supported. If the content exceeds the expected media size, the archives are split into multiple ISO files.
 
 ## OPTIONS
 
@@ -229,15 +229,22 @@ Verify the integrity of the entire change chain:
 historify verify --full-chain /path/to/project
 ```
 
-Create an archive snapshot:
+Create archive snapshots:
 ```bash
-historify snapshot /backup/project-2025-04-21.tar.gz /path/to/project
+# Create basic snapshot (saves to /backup/project_YYYY-MM-DD.tar.gz)
+historify snapshot /backup /path/to/project
+
+# Specify a custom name (saves to /backup/archive_YYYY-MM-DD.tar.gz)
+historify snapshot /backup /path/to/project --name archive
 
 # Create a snapshot with external data
-historify snapshot /backup/project-2025-04-21.tar.gz /path/to/project --full
+historify snapshot /backup /path/to/project --full
 
 # Create a snapshot packaged for BD-R media
-historify snapshot /backup/project-2025-04-21.tar.gz /path/to/project --media
+historify snapshot /backup /path/to/project --media
+
+# All options combined
+historify snapshot /backup /path/to/project --name archive --full --media
 ```
 
 ## FILES

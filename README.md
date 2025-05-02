@@ -45,7 +45,7 @@ historify verify /path/to/repository        # Verify integrity
 # Information and export
 historify status /path/to/repository        # Show repository status
 historify log /path/to/repository           # View change history
-historify snapshot /path/to/output.tar.gz /path/to/repository  # Create backup
+historify snapshot /path/to/backup/dir /path/to/repository  # Create dated backup archive
 ```
 
 ## Automation

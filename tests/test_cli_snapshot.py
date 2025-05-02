@@ -64,8 +64,11 @@ class TestSnapshotImplementation:
             temp_path = temp.name
         
         try:
+            # Create a base filename for the test
+            base_filename = "test_snapshot"
+            
             # Create the snapshot
-            result = create_snapshot(str(self.test_repo_path), temp_path)
+            result = create_snapshot(str(self.test_repo_path), temp_path, base_filename)
             
             assert result is True
             assert Path(temp_path).exists()
@@ -97,15 +100,18 @@ class TestSnapshotImplementation:
             temp_path = temp.name
             
         try:
+            # Create a base filename for the test
+            base_filename = "test_snapshot"
+            
             # Create the full snapshot
-            result = create_snapshot(str(self.test_repo_path), temp_path, full=True)
+            result = create_snapshot(str(self.test_repo_path), temp_path, base_filename, full=True)
             
             assert result is True
             assert Path(temp_path).exists()
             
-            # Check for the external category archive
+            # Check for the external category archive with new naming
             temp_path_obj = Path(temp_path)
-            external_archive = temp_path_obj.parent / f"{temp_path_obj.stem}-external{temp_path_obj.suffix}"
+            external_archive = temp_path_obj.parent / f"{base_filename}-external.tar.gz"
             
             assert external_archive.exists()
             assert external_archive.stat().st_size > 0
@@ -125,7 +131,7 @@ class TestSnapshotImplementation:
                 
             # Clean up external archive if it exists
             temp_path_obj = Path(temp_path)
-            external_archive = temp_path_obj.parent / f"{temp_path_obj.stem}-external{temp_path_obj.suffix}"
+            external_archive = temp_path_obj.parent / f"{base_filename}-external.tar.gz"
             if external_archive.exists():
                 external_archive.unlink()
     
@@ -141,8 +147,11 @@ class TestSnapshotImplementation:
             temp_path = temp.name
         
         try:
+            # Create a base filename for the test
+            base_filename = "test_snapshot"
+            
             # Create the snapshot with media
-            result = create_snapshot(str(self.test_repo_path), temp_path, media=True)
+            result = create_snapshot(str(self.test_repo_path), temp_path, base_filename, media=True)
             
             assert result is True
             assert Path(temp_path).exists()
@@ -151,6 +160,11 @@ class TestSnapshotImplementation:
             mock_pack_media.assert_called_once()
             args, kwargs = mock_pack_media.call_args
             assert args[0] == [Path(temp_path)]  # Archives list should include main snapshot
+            
+            # Verify output base path uses the same base_filename
+            expected_base_path = Path(temp_path).parent / base_filename
+            assert args[1] == expected_base_path
+            
             assert kwargs.get('media_type') == "bd-r"
             
         finally:
@@ -170,15 +184,18 @@ class TestSnapshotImplementation:
             temp_path = temp.name
         
         try:
+            # Create a base filename for the test
+            base_filename = "test_snapshot"
+            
             # Create the full snapshot with media
-            result = create_snapshot(str(self.test_repo_path), temp_path, full=True, media=True)
+            result = create_snapshot(str(self.test_repo_path), temp_path, base_filename, full=True, media=True)
             
             assert result is True
             assert Path(temp_path).exists()
             
             # Check for the external category archive
             temp_path_obj = Path(temp_path)
-            external_archive = temp_path_obj.parent / f"{temp_path_obj.stem}-external{temp_path_obj.suffix}"
+            external_archive = temp_path_obj.parent / f"{base_filename}-external.tar.gz"
             assert external_archive.exists()
             
             # Verify pack_archives_for_media was called with both archives
@@ -187,6 +204,11 @@ class TestSnapshotImplementation:
             assert len(args[0]) == 2  # Main snapshot and external category
             assert Path(temp_path) in args[0]
             assert external_archive in args[0]
+            
+            # Verify output base path uses the same base_filename
+            expected_base_path = Path(temp_path).parent / base_filename
+            assert args[1] == expected_base_path
+            
             assert kwargs.get('media_type') == "bd-r"
             
         finally:
@@ -196,7 +218,7 @@ class TestSnapshotImplementation:
                 
             # Clean up external archive if it exists
             temp_path_obj = Path(temp_path)
-            external_archive = temp_path_obj.parent / f"{temp_path_obj.stem}-external{temp_path_obj.suffix}"
+            external_archive = temp_path_obj.parent / f"{base_filename}-external.tar.gz"
             if external_archive.exists():
                 external_archive.unlink()
     
@@ -210,9 +232,12 @@ class TestSnapshotImplementation:
             temp_path = temp.name
         
         try:
+            # Create a base filename for the test
+            base_filename = "test_snapshot"
+            
             # Create the snapshot (should fail)
             with pytest.raises(SnapshotError, match="Repository integrity check failed"):
-                create_snapshot(str(self.test_repo_path), temp_path)
+                create_snapshot(str(self.test_repo_path), temp_path, base_filename)
             
             # Verify that the snapshot was not created
             assert not Path(temp_path).exists()
@@ -230,11 +255,20 @@ class TestSnapshotImplementation:
         # Set up mock to return success
         mock_create.return_value = True
         
-        # Handle the snapshot command
-        handle_snapshot_command("output.tar.gz", str(self.test_repo_path))
+        # Handle the snapshot command with the new parameters
+        handle_snapshot_command("output_dir", str(self.test_repo_path), name="test-repo")
         
         # Verify create_snapshot was called correctly
-        mock_create.assert_called_once_with(str(self.test_repo_path), "output.tar.gz", full=False, media=False)
+        mock_create.assert_called_once()
+        args, kwargs = mock_create.call_args
+        assert args[0] == str(self.test_repo_path)
+        # The second argument is the output path, which now includes date
+        assert "test-repo_" in args[1]
+        assert args[1].endswith(".tar.gz")
+        # Check base filename has correct format
+        assert "test-repo_" in args[2]
+        assert kwargs.get('full') is False
+        assert kwargs.get('media') is False
     
     @patch('historify.cli_snapshot.create_snapshot')
     def test_handle_snapshot_command_with_full(self, mock_create):
@@ -243,10 +277,16 @@ class TestSnapshotImplementation:
         mock_create.return_value = True
         
         # Handle the snapshot command with full option
-        handle_snapshot_command("output.tar.gz", str(self.test_repo_path), full=True)
+        handle_snapshot_command("output_dir", str(self.test_repo_path), name="test-repo", full=True)
         
         # Verify create_snapshot was called correctly
-        mock_create.assert_called_once_with(str(self.test_repo_path), "output.tar.gz", full=True, media=False)
+        mock_create.assert_called_once()
+        args, kwargs = mock_create.call_args
+        assert args[0] == str(self.test_repo_path)
+        assert "test-repo_" in args[1]
+        assert "test-repo_" in args[2]
+        assert kwargs.get('full') is True
+        assert kwargs.get('media') is False
     
     @patch('historify.cli_snapshot.create_snapshot')
     def test_handle_snapshot_command_with_media_flag(self, mock_create):
@@ -255,10 +295,16 @@ class TestSnapshotImplementation:
         mock_create.return_value = True
         
         # Handle the snapshot command with media flag
-        handle_snapshot_command("output.tar.gz", str(self.test_repo_path), media=True)
+        handle_snapshot_command("output_dir", str(self.test_repo_path), name="test-repo", media=True)
         
         # Verify create_snapshot was called correctly
-        mock_create.assert_called_once_with(str(self.test_repo_path), "output.tar.gz", full=False, media=True)
+        mock_create.assert_called_once()
+        args, kwargs = mock_create.call_args
+        assert args[0] == str(self.test_repo_path)
+        assert "test-repo_" in args[1]
+        assert "test-repo_" in args[2]
+        assert kwargs.get('full') is False
+        assert kwargs.get('media') is True
     
     @patch('historify.cli_snapshot.create_snapshot')
     def test_handle_snapshot_command_with_media_value(self, mock_create):
@@ -267,10 +313,16 @@ class TestSnapshotImplementation:
         mock_create.return_value = True
         
         # Handle the snapshot command with media value
-        handle_snapshot_command("output.tar.gz", str(self.test_repo_path), media="bd-r")
+        handle_snapshot_command("output_dir", str(self.test_repo_path), name="test-repo", media="bd-r")
         
         # Verify create_snapshot was called correctly
-        mock_create.assert_called_once_with(str(self.test_repo_path), "output.tar.gz", full=False, media="bd-r")
+        mock_create.assert_called_once()
+        args, kwargs = mock_create.call_args
+        assert args[0] == str(self.test_repo_path)
+        assert "test-repo_" in args[1]
+        assert "test-repo_" in args[2]
+        assert kwargs.get('full') is False
+        assert kwargs.get('media') == "bd-r"
     
     @patch('historify.cli_snapshot.create_snapshot')
     def test_handle_snapshot_command_error(self, mock_create):
@@ -280,7 +332,7 @@ class TestSnapshotImplementation:
         
         # Handle the snapshot command
         with pytest.raises(click.Abort):
-            handle_snapshot_command("output.tar.gz", str(self.test_repo_path))
+            handle_snapshot_command("output_dir", str(self.test_repo_path), name="test-repo")
         
         # Verify create_snapshot was called
         mock_create.assert_called_once()
@@ -288,49 +340,58 @@ class TestSnapshotImplementation:
     def test_cli_snapshot_command(self):
         """Test the CLI snapshot command."""
         with patch('historify.cli.handle_snapshot_command') as mock_handle:
-            # Run the command
-            result = self.runner.invoke(snapshot, ["output.tar.gz", str(self.test_repo_path)])
+            # Run the command with new parameter
+            result = self.runner.invoke(snapshot, ["output_dir", str(self.test_repo_path)])
             
             assert result.exit_code == 0
-            mock_handle.assert_called_once_with("output.tar.gz", str(self.test_repo_path), False, False)
+            mock_handle.assert_called_once_with("output_dir", str(self.test_repo_path), None, False, False)
+    
+    def test_cli_snapshot_command_with_name_option(self):
+        """Test the CLI snapshot command with --name option."""
+        with patch('historify.cli.handle_snapshot_command') as mock_handle:
+            # Run the command with --name
+            result = self.runner.invoke(snapshot, ["output_dir", str(self.test_repo_path), "--name", "custom-name"])
+            
+            assert result.exit_code == 0
+            mock_handle.assert_called_once_with("output_dir", str(self.test_repo_path), "custom-name", False, False)
     
     def test_cli_snapshot_command_with_full_option(self):
         """Test the CLI snapshot command with --full option."""
         with patch('historify.cli.handle_snapshot_command') as mock_handle:
             # Run the command with --full
-            result = self.runner.invoke(snapshot, ["output.tar.gz", str(self.test_repo_path), "--full"])
+            result = self.runner.invoke(snapshot, ["output_dir", str(self.test_repo_path), "--full"])
             
             assert result.exit_code == 0
-            mock_handle.assert_called_once_with("output.tar.gz", str(self.test_repo_path), True, False)
+            mock_handle.assert_called_once_with("output_dir", str(self.test_repo_path), None, True, False)
     
     def test_cli_snapshot_command_with_media_flag(self):
         """Test the CLI snapshot command with --media flag."""
         with patch('historify.cli.handle_snapshot_command') as mock_handle:
             # Run the command with --media
-            result = self.runner.invoke(snapshot, ["output.tar.gz", str(self.test_repo_path), "--media"])
+            result = self.runner.invoke(snapshot, ["output_dir", str(self.test_repo_path), "--media"])
             
             assert result.exit_code == 0
-            mock_handle.assert_called_once_with("output.tar.gz", str(self.test_repo_path), False, True)
+            mock_handle.assert_called_once_with("output_dir", str(self.test_repo_path), None, False, True)
     
     def test_cli_snapshot_command_with_media_value(self):
         """Test the CLI snapshot command with --media=bd-r option."""
         with patch('historify.cli.handle_snapshot_command') as mock_handle:
             # Run the command with --media=bd-r
-            result = self.runner.invoke(snapshot, ["output.tar.gz", str(self.test_repo_path), "--media"])
+            result = self.runner.invoke(snapshot, ["output_dir", str(self.test_repo_path), "--media"])
             
             assert result.exit_code == 0
-            mock_handle.assert_called_once_with("output.tar.gz", str(self.test_repo_path), False, True)
+            mock_handle.assert_called_once_with("output_dir", str(self.test_repo_path), None, False, True)
     
     def test_cli_snapshot_command_with_full_and_media(self):
         """Test the CLI snapshot command with both --full and --media options."""
         with patch('historify.cli.handle_snapshot_command') as mock_handle:
             # Run the command with both --full and --media
             result = self.runner.invoke(snapshot, [
-                "output.tar.gz", 
+                "output_dir", 
                 str(self.test_repo_path), 
                 "--full", 
                 "--media"
             ])
             
             assert result.exit_code == 0
-            mock_handle.assert_called_once_with("output.tar.gz", str(self.test_repo_path), True, True)
+            mock_handle.assert_called_once_with("output_dir", str(self.test_repo_path), None, True, True)
