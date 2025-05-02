@@ -62,31 +62,38 @@ def create_iso_image(archives: List[Path], output_path: Path, repo_path: Optiona
         # Get the current date for metadata
         date_str = datetime.now().strftime('%Y-%m-%d')
         
-        # ISO9660 volume identifiers are strictly limited to 32 characters
-        # We need to ensure there's always space for date and separator
-        # First, determine how much space we need for the date and separator
-        date_suffix = f"_{date_str}"
-        date_len = len(date_suffix)
+        # Through testing we've discovered that PyCdlib has a limitation
+        # where volume identifiers need to be 15 characters or less
         
-        # Calculate maximum allowed length for basename
-        max_basename_len = 32 - date_len
+        # Important: although the ISO9660 spec says 32 chars is the limit,
+        # PyCdlib implementation has a stricter limit of 15 characters
         
-        # Ensure we have a reasonable minimum length for basename (at least 8 chars if possible)
-        if max_basename_len < 8:
-            # If date is too long, truncate the date instead of basename
-            max_basename_len = 16  # Reasonable minimum for basename
-            date_suffix = f"_{date_str[:32-max_basename_len-1]}"  # -1 for underscore
+        # Generate a short but meaningful volume ID
+        # Use a short prefix (e.g., "hst") + date in shorter format
+        short_date = datetime.now().strftime('%Y%m%d')  # shorter date format (e.g., 20250502)
         
-        # Truncate basename if needed
-        if len(vol_basename) > max_basename_len:
-            vol_basename = vol_basename[:max_basename_len]
+        # Create a volume ID that's 15 chars or less to ensure compatibility
+        vol_prefix = "hst"  # short prefix for historify
+        
+        # We can use up to 15 chars total
+        # Format: prefix + underscore + short date + counter if needed
+        # Example: "hst_250502_1" for the first disc
+        vol_ident = f"{vol_prefix}_{short_date}"
+        
+        # Add a suffix if we need multiple discs
+        counter_suffix = ""
+        # For future: if we're creating disc 2, 3, etc., add a suffix
+        # counter_suffix = f"_{disc_num}"
+        
+        # Add counter suffix if available and would still fit
+        if counter_suffix and len(vol_ident) + len(counter_suffix) <= 15:
+            vol_ident += counter_suffix
             
-        # Combine basename and date
-        vol_ident = f"{vol_basename}{date_suffix}"
-        
-        # Final safety check - ensure we never exceed 32 chars total
-        if len(vol_ident) > 32:
-            vol_ident = vol_ident[:32]
+        # Final safety check - ensure we never exceed 15 chars total
+        if len(vol_ident) > 15:
+            vol_ident = vol_ident[:15]
+            
+        logger.debug(f"Using volume identifier: {vol_ident} (length: {len(vol_ident)})")
         
         # Get publisher from config if available
         publisher = "historify archive"

@@ -119,8 +119,10 @@ class TestMediaPacker:
         assert call_args['interchange_level'] == 4
         assert call_args['joliet'] == 3
         assert call_args['sys_ident'] == "historify"
-        assert "test_output" in call_args['vol_ident']
-        assert "2023-01-01" in call_args['vol_ident']
+        # Volume identifier now uses a short format for compatibility with PyCdlib
+        assert "hst_" in call_args['vol_ident']
+        # Ensure volume identifier length is 15 chars or less
+        assert len(call_args['vol_ident']) <= 15
         assert call_args['pub_ident_str'] == "historify archive"
         assert "historify" in call_args['preparer_ident_str'] 
         assert "github.com/kwinsch/historify" in call_args['app_ident_str']
@@ -162,13 +164,15 @@ class TestMediaPacker:
         # Check that volume identifier is properly truncated
         call_args = mock_iso.new.call_args[1]
         
-        # Vol_ident should not exceed 32 characters (ISO9660 limit)
-        assert len(call_args['vol_ident']) <= 32
+        # Vol_ident should not exceed 15 characters (PyCdlib implementation limit)
+        assert len(call_args['vol_ident']) <= 15
         
-        # Should contain part of the base name and date
+        # With our new approach, we use a standardized format for volume ID
         vol_ident = call_args['vol_ident']
-        assert vol_ident.startswith("ThisIsAnExtremely")  # Start of the truncated name
-        assert "2023-01-01" in vol_ident or "2023-01" in vol_ident  # Date might be truncated
+        # Should use the short format: "hst_" prefix followed by date
+        assert vol_ident.startswith("hst_")  
+        # Volume identifier length should be within PyCdlib limits (15 chars or less)
+        assert len(vol_ident) <= 15
         
         # Check file operations
         mock_iso.write.assert_called_once()
