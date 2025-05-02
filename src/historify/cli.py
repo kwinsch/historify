@@ -185,13 +185,14 @@ def duplicates(repo_path, category):
 @click.argument("output_path", type=click.Path(), required=True)
 @click.argument("repo_path", type=click.Path(exists=True), default=".")
 @click.option("--full", is_flag=True, help="Include external category data in separate archives")
-@click.option("--media", help="Create ISO image for specific media type (e.g., bd-r)")
+@click.option("--media", is_flag=True, default=False, help="Create ISO image for media (default: bd-r)")
 def snapshot(output_path, repo_path, full, media):
     """
     Create a compressed archive of the current repository state.
     
     Includes all data files, change logs, seed, signatures, and configuration.
     With --full, creates separate archives for external categories.
+    With --media, creates ISO images suitable for optical media (BD-R).
     """
     handle_snapshot_command(output_path, repo_path, full, media)
 

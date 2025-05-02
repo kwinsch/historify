@@ -11,6 +11,7 @@ from typing import List, Optional
 
 from historify.cli_verify import cli_verify_command
 from historify.config import RepositoryConfig
+from historify.media_packer import pack_archives_for_media, MediaPackError
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +55,7 @@ def create_snapshot(repo_path: str, output_path: str, verify_first: bool = True,
             output_path = output_path.with_suffix('.tar.gz')
         
         # Get repository configuration to find categories
+        external_categories = {}
         if full:
             config = RepositoryConfig(str(repo_path))
             all_config = config.list_all()
@@ -66,19 +68,13 @@ def create_snapshot(repo_path: str, output_path: str, verify_first: bool = True,
                     categories[cat_name] = value
             
             # Separate internal and external categories
-            internal_categories = {}
-            external_categories = {}
-            
             for cat_name, cat_path in categories.items():
                 cat_path_obj = Path(cat_path)
                 if cat_path_obj.is_absolute() and not str(cat_path_obj).startswith(str(repo_path)):
                     # External category (absolute path outside repository)
                     external_categories[cat_name] = cat_path_obj
-                else:
-                    # Internal category (relative or inside repository)
-                    internal_categories[cat_name] = cat_path_obj
             
-            logger.info(f"Found {len(internal_categories)} internal categories and {len(external_categories)} external categories")
+            logger.info(f"Found {len(external_categories)} external categories")
         
         # Create the main repository archive
         with tarfile.open(output_path, "w:gz") as tar:
@@ -86,6 +82,9 @@ def create_snapshot(repo_path: str, output_path: str, verify_first: bool = True,
             tar.add(repo_path, arcname=repo_path.name)
         
         logger.info(f"Created main snapshot at {output_path}")
+        
+        # List of all archives (main + external categories)
+        all_archives = [output_path]
         
         # Create separate archives for external categories if requested
         if full:
@@ -109,16 +108,29 @@ def create_snapshot(repo_path: str, output_path: str, verify_first: bool = True,
                     
                     logger.info(f"Created external category snapshot for '{cat_name}' at {cat_archive_path}")
                     created_category_archives.append(cat_archive_path)
+                    all_archives.append(cat_archive_path)
                 except Exception as e:
                     logger.error(f"Error creating archive for category '{cat_name}': {e}")
-            
-            # Handle media creation if requested
-            if media:
-                if media == "bd-r":
-                    logger.info("Creating BD-R ISO image is not yet implemented")
-                    # TODO: Implement BD-R ISO creation
-                else:
-                    logger.warning(f"Unsupported media type: {media}")
+        
+        # Handle media creation if requested
+        if media:
+            try:
+                # For BD-R media or when just --media is specified (default to bd-r)
+                media_type = "bd-r"
+                if isinstance(media, str) and media.lower() != "bd-r":
+                    media_type = media.lower()
+                
+                logger.info(f"Packing archives for {media_type} media")
+                
+                # Create ISO image(s) for BD-R
+                iso_files = pack_archives_for_media(all_archives, output_path, media_type=media_type)
+                
+                if iso_files:
+                    logger.info(f"Created {len(iso_files)} ISO image(s) for {media_type} media")
+                    for iso_file in iso_files:
+                        logger.info(f"  - {iso_file}")
+            except MediaPackError as e:
+                logger.warning(f"Failed to create media image: {e}")
         
         return True
         
@@ -140,7 +152,7 @@ def handle_snapshot_command(output_path: str, repo_path: str, full: bool = False
         output_path: Path where the snapshot archive should be saved.
         repo_path: Path to the repository.
         full: Whether to include external category data in separate archives.
-        media: Media type for creating ISO image.
+        media: Media type for creating ISO image (default: "bd-r").
     """
     try:
         repo_path = Path(repo_path).resolve()
@@ -151,7 +163,10 @@ def handle_snapshot_command(output_path: str, repo_path: str, full: bool = False
             click.echo(f"Creating snapshot from {repo_path} to {output_path}")
         
         if media:
-            click.echo(f"Using media type: {media}")
+            media_type = "bd-r"
+            if isinstance(media, str) and media.lower() != "true":
+                media_type = media.lower()
+            click.echo(f"Will create media image of type: {media_type}")
         
         success = create_snapshot(str(repo_path), output_path, full=full, media=media)
         
@@ -170,6 +185,18 @@ def handle_snapshot_command(output_path: str, repo_path: str, full: bool = False
                     click.echo("External category archives created:")
                     for archive in category_archives:
                         click.echo(f"  - {archive.name}")
+            
+            if media:
+                # Look for ISO files that were created
+                output_path_obj = Path(output_path)
+                output_stem = output_path_obj.stem
+                output_parent = output_path_obj.parent
+                
+                iso_files = list(output_parent.glob(f"{output_stem}*.iso"))
+                if iso_files:
+                    click.echo("Media image files created:")
+                    for iso_file in iso_files:
+                        click.echo(f"  - {iso_file.name}")
         else:
             click.echo("Failed to create snapshot", err=True)
             raise click.Abort()

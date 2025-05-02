@@ -12,7 +12,8 @@ dependencies = [
     "click>=8.1.7",
     "configparser>=7.1.0",
     "blake3>=0.3.4",
-    "pexpect>=4.9.0"
+    "pexpect>=4.9.0",
+    "pycdlib>=1.14.0"
 ]
 keywords = ["versioning", "changelog", "integrity", "cryptography"]
 classifiers = [
