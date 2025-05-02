@@ -103,8 +103,8 @@ class TestMediaPacker:
         # Verify the result
         assert iso_path == output_path.with_suffix('.iso')
         
-        # Verify PyCdlib was used correctly
-        mock_iso.new.assert_called_once_with(udf="2.60")
+        # Verify PyCdlib was used correctly - updated to match actual implementation
+        mock_iso.new.assert_called_once_with(udf="2.60", interchange_level=4, joliet=3)
         assert mock_iso.add_file.call_count == 2  # Once for each archive
         mock_iso.write.assert_called_once_with(str(output_path.with_suffix('.iso')))
         mock_iso.close.assert_called_once()
