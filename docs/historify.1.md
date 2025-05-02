@@ -57,8 +57,8 @@ A historify repository contains:
 **comment** *message* [*repo_path*]
 : Add an administrative comment to the change log. Useful for documenting important events or changes. Logs a `comment`  with the specified message.
 
-**snapshot** *output_path* [*repo_path*]
-: Create a compressed archive (tar.gz) of the current repository state for archiving purposes. Includes all data files, change logs, seed, signatures, and configuration.
+**snapshot** *output_path* [*repo_path*] [`--full`] [`--media[=bd-r]`]
+: Create a compressed archive (tar.gz) of the current repository state for archiving purposes. Includes all data files, change logs, seed, signatures, and configuration directly residing under the repo path. If `--full` is specified, all external data files and folders referenced by the repository are backed up as a separate tar.gz archive in the same output path as the specified main archive. If `--media` is specified, the tar.gz files are packed in a iso file with UDF filesystem, ready to be burned to a single layer BD-ROM disk. Other media types are currently not supported. If the content exceed the expected media size, the tar.gz are split.
 
 ## OPTIONS
 
