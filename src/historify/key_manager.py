@@ -1,10 +1,11 @@
-# src/historify/key_manager.py
 """
 Key management module for historify that handles key backup and retrieval.
 """
 import os
+import sys
 import logging
 import shutil
+import re
 from pathlib import Path
 from typing import Optional, List, Dict
 
@@ -42,27 +43,34 @@ def backup_public_key(repo_path: str, public_key_path: str) -> Optional[str]:
         
         # Extract the key ID from the first line
         key_id = None
+        key_content = ""
         with open(public_key_path, "r") as f:
-            first_line = f.readline().strip()
+            key_content = f.read()
+            first_line = key_content.splitlines()[0].strip()
+            
             # Extract the key ID from the comment line
             # Format is usually: "untrusted comment: minisign public key KEYID"
             if "public key" in first_line:
-                parts = first_line.split()
-                if len(parts) > 0:
-                    key_id = parts[-1]
+                # Try to extract the actual key ID that follows "public key"
+                match = re.search(r"public key\s+(\w+)", first_line)
+                if match:
+                    key_id = match.group(1)
             
             # If key ID couldn't be extracted, use the filename
             if not key_id:
                 key_id = public_key_path.stem
+        
+        logger.debug(f"Extracted key ID: {key_id} from public key file")
         
         # Create the target file path
         target_path = keys_dir / f"{key_id}.pub"
         
         # If the key already exists with the same content, no need to copy
         if target_path.exists():
-            with open(public_key_path, "rb") as src_file, open(target_path, "rb") as target_file:
-                if src_file.read() == target_file.read():
-                    logger.debug(f"Key {key_id} already backed up")
+            with open(target_path, "r") as existing_file:
+                existing_content = existing_file.read()
+                if key_content == existing_content:
+                    logger.debug(f"Key {key_id} already backed up with identical content")
                     return key_id
         
         # Copy the key file

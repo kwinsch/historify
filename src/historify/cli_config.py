@@ -1,4 +1,3 @@
-# src/historify/cli_config.py with modifications
 """
 Implementation of config commands for historify.
 """
@@ -31,6 +30,10 @@ def set_config(repo_path: str, key: str, value: str) -> bool:
         # Backup public key if this is setting minisign.pub
         if key == "minisign.pub":
             try:
+                # Ensure the db/keys directory exists
+                keys_dir = Path(repo_path) / "db" / "keys"
+                keys_dir.mkdir(parents=True, exist_ok=True)
+                
                 backup_public_key(repo_path, value)
             except KeyError as e:
                 logger.warning(f"Failed to backup public key: {e}")
