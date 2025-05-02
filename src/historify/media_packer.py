@@ -62,13 +62,30 @@ def create_iso_image(archives: List[Path], output_path: Path, repo_path: Optiona
         # Get the current date for metadata
         date_str = datetime.now().strftime('%Y-%m-%d')
         
-        # ISO9660 volume identifiers are limited to 32 characters
-        # Try to fit both basename and date if possible
-        vol_ident = vol_basename
-        if len(vol_ident) > 26:  # Leave room for date and separator
-            vol_ident = vol_ident[:26]
-        vol_ident = f"{vol_ident}_{date_str}"
-        if len(vol_ident) > 32:  # Final safety check
+        # ISO9660 volume identifiers are strictly limited to 32 characters
+        # We need to ensure there's always space for date and separator
+        # First, determine how much space we need for the date and separator
+        date_suffix = f"_{date_str}"
+        date_len = len(date_suffix)
+        
+        # Calculate maximum allowed length for basename
+        max_basename_len = 32 - date_len
+        
+        # Ensure we have a reasonable minimum length for basename (at least 8 chars if possible)
+        if max_basename_len < 8:
+            # If date is too long, truncate the date instead of basename
+            max_basename_len = 16  # Reasonable minimum for basename
+            date_suffix = f"_{date_str[:32-max_basename_len-1]}"  # -1 for underscore
+        
+        # Truncate basename if needed
+        if len(vol_basename) > max_basename_len:
+            vol_basename = vol_basename[:max_basename_len]
+            
+        # Combine basename and date
+        vol_ident = f"{vol_basename}{date_suffix}"
+        
+        # Final safety check - ensure we never exceed 32 chars total
+        if len(vol_ident) > 32:
             vol_ident = vol_ident[:32]
         
         # Get publisher from config if available

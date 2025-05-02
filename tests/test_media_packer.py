@@ -130,6 +130,49 @@ class TestMediaPacker:
         expected_iso_path = output_path.with_suffix('.iso')
         mock_iso.write.assert_called_once_with(str(expected_iso_path))
         mock_iso.close.assert_called_once()
+        
+    @patch('pycdlib.PyCdlib')
+    @patch('historify.media_packer.datetime')
+    def test_create_iso_image_with_very_long_filename(self, mock_datetime, mock_pycdlib):
+        """Test creating an ISO image with an extremely long filename."""
+        # Set up mocks
+        mock_iso = MagicMock()
+        mock_pycdlib.return_value = mock_iso
+        
+        # Set fixed date for testing
+        mock_date = MagicMock()
+        mock_date.strftime.return_value = "2023-01-01"
+        mock_datetime.now.return_value = mock_date
+        
+        archives = [self.archive1, self.archive2]
+        
+        # Create an extremely long output path name
+        very_long_name = "ThisIsAnExtremelyLongFileNameThatExceedsTheISO9660LimitForVolumeIdentifiers"
+        output_path = self.temp_path / very_long_name
+        
+        # Call the function
+        iso_path = create_iso_image(archives, output_path)
+        
+        # Verify the result
+        assert iso_path == output_path.with_suffix('.iso')
+        
+        # Verify PyCdlib was used correctly
+        mock_iso.new.assert_called_once()
+        
+        # Check that volume identifier is properly truncated
+        call_args = mock_iso.new.call_args[1]
+        
+        # Vol_ident should not exceed 32 characters (ISO9660 limit)
+        assert len(call_args['vol_ident']) <= 32
+        
+        # Should contain part of the base name and date
+        vol_ident = call_args['vol_ident']
+        assert vol_ident.startswith("ThisIsAnExtremely")  # Start of the truncated name
+        assert "2023-01-01" in vol_ident or "2023-01" in vol_ident  # Date might be truncated
+        
+        # Check file operations
+        mock_iso.write.assert_called_once()
+        mock_iso.close.assert_called_once()
     
     @patch('historify.media_packer.create_iso_image')
     def test_pack_for_bd_r_single_disc(self, mock_create_iso):
