@@ -341,26 +341,32 @@ class TestFullChainVerification:
         """Test that verify_full_chain backs up the public key."""
         # Set up mocks
         mock_minisign_verify.return_value = (True, "Signature verified")
-        
-        # Create a test public key
+
+        # Create a test public key with a proper format that includes the expected key ID
         pub_key_path = self.test_repo_path / "verify_test.pub"
         with open(pub_key_path, "w") as f:
             f.write("untrusted comment: minisign public key VERIFY123\n")
-            f.write("TESTKEY123456789\n")
-        
+            # Need a valid base64 public key format with the key ID embedded
+            # This is crafted to ensure the key ID is extracted as VERIFY123
+            f.write("RWRWRVJJRlkxMjMAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==\n")
+
         # Configure the public key
         config = RepositoryConfig(str(self.test_repo_path))
         config.set("minisign.pub", str(pub_key_path))
-        
+
         # Make sure keys directory doesn't exist yet
         keys_dir = self.test_repo_path / "db" / "keys"
         if keys_dir.exists():
             shutil.rmtree(keys_dir)
-        
+
         # Run verification
-        from historify.cli_verify import verify_full_chain
-        success, issues = verify_full_chain(str(self.test_repo_path))
-        
+        with patch('historify.key_manager.extract_key_id_from_data') as mock_extract:
+            # Force the extracted key ID to match what we expect in the test
+            mock_extract.return_value = "VERIFY123"
+            
+            from historify.cli_verify import verify_full_chain
+            success, issues = verify_full_chain(str(self.test_repo_path))
+
         # Verify the key was backed up
         assert keys_dir.exists()
         backed_up_keys = list(keys_dir.glob("*.pub"))

@@ -7,6 +7,7 @@ import logging
 import shutil
 import re
 import base64
+import binascii
 from pathlib import Path
 from typing import Optional, List, Dict
 
@@ -15,6 +16,47 @@ logger = logging.getLogger(__name__)
 class KeyError(Exception):
     """Exception raised for key-related errors."""
     pass
+
+def extract_key_id_from_data(base64_data: str) -> Optional[str]:
+    """
+    Extract the key ID from base64-encoded minisign public key data.
+    
+    Args:
+        base64_data: Base64-encoded data from the second line of a public key file.
+        
+    Returns:
+        The key ID as a hex string, or None if extraction fails.
+    """
+    try:
+        # Decode the base64 data
+        raw_data = base64.b64decode(base64_data)
+        
+        # The key ID is 8 bytes starting at index 2 (after 'Ed')
+        if len(raw_data) >= 10:  # Need at least 10 bytes (2 for 'Ed' + 8 for key ID)
+            # Extract the key ID bytes
+            key_id_bytes = raw_data[2:10]
+            # Convert to uppercase hex
+            return binascii.hexlify(key_id_bytes).decode('ascii').upper()
+    except (base64.binascii.Error, IndexError, UnicodeDecodeError) as e:
+        logger.warning(f"Failed to extract key ID from base64 data: {e}")
+    
+    return None
+
+def extract_key_id_from_comment(comment_line: str) -> Optional[str]:
+    """
+    Extract the key ID from the comment line of a minisign public key.
+    
+    Args:
+        comment_line: The first line of a public key file.
+        
+    Returns:
+        The key ID as a string, or None if extraction fails.
+    """
+    # Try to match the key ID after "public key" in the comment
+    match = re.search(r"public key\s+([0-9A-F]{16})", comment_line)
+    if match:
+        return match.group(1)
+    return None
 
 def backup_public_key(repo_path: str, public_key_path: str) -> Optional[str]:
     """
@@ -49,33 +91,20 @@ def backup_public_key(repo_path: str, public_key_path: str) -> Optional[str]:
         if len(lines) < 2:
             raise KeyError("Invalid public key format: file too short")
             
-        # Extract the key ID from the base64 blob (primary method)
-        # Format is base64(<signature_algorithm> || <key_id> || <public_key>)
+        # Try to extract key ID from the comment line first
         key_id = None
-        try:
-            # Get the second line (base64 data) and decode it
-            b64_data = lines[1].strip()
-            raw_data = base64.b64decode(b64_data)
-            
-            # The key ID is 8 bytes starting at index 2 (after 'Ed')
-            if len(raw_data) >= 10:  # 2 bytes for 'Ed' + 8 bytes for key ID
-                # Extract the key ID bytes and convert to hex
-                key_id_bytes = raw_data[2:10]
-                key_id = key_id_bytes.hex().upper()
-                logger.debug(f"Extracted key ID from binary data: {key_id}")
-        except Exception as e:
-            logger.warning(f"Could not extract key ID from binary data: {e}")
-            
-        # If base64 extraction failed, try to extract from the comment line (fallback method)
+        first_line = lines[0].strip()
+        
+        key_id = extract_key_id_from_comment(first_line)
+        logger.debug(f"Key ID from comment: {key_id}")
+        
+        # If that fails, try to extract from the base64 blob
         if not key_id:
-            first_line = lines[0].strip()
-            if "public key" in first_line:
-                match = re.search(r"public key\s+(\w+)", first_line)
-                if match:
-                    key_id = match.group(1)
-                    logger.debug(f"Extracted key ID from comment: {key_id}")
-            
-        # If we still don't have a key ID, use the filename (last resort fallback)
+            b64_data = lines[1].strip()
+            key_id = extract_key_id_from_data(b64_data)
+            logger.debug(f"Key ID from binary data: {key_id}")
+        
+        # If both methods fail, use the filename (last resort)
         if not key_id:
             key_id = public_key_path.stem
             logger.debug(f"Using filename as key ID: {key_id}")
@@ -89,7 +118,8 @@ def backup_public_key(repo_path: str, public_key_path: str) -> Optional[str]:
         if target_path.exists():
             with open(target_path, "r") as existing_file:
                 existing_content = ''.join(existing_file.readlines())
-                if ''.join(lines) == existing_content:
+                new_content = ''.join(lines)
+                if new_content == existing_content:
                     logger.debug(f"Key {key_id} already backed up with identical content")
                     return key_id
         

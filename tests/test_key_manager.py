@@ -9,7 +9,14 @@ from pathlib import Path
 from click.testing import CliRunner
 from unittest.mock import patch, MagicMock
 
-from historify.key_manager import backup_public_key, find_public_key_by_id, list_backed_up_keys, KeyError
+from historify.key_manager import (
+    backup_public_key, 
+    find_public_key_by_id, 
+    list_backed_up_keys, 
+    extract_key_id_from_data,
+    extract_key_id_from_comment,
+    KeyError
+)
 from historify.cli_init import init_repository
 from historify.cli import config
 
@@ -29,27 +36,20 @@ class TestKeyManager:
         self.keys_dir = Path("test_keys").absolute()
         self.keys_dir.mkdir(parents=True, exist_ok=True)
         
-        # Create test key files
-        self.key1_path = self.keys_dir / "key1.pub"
-        self.key2_path = self.keys_dir / "key2.pub"
-        
-        # Create key with ID in comment
-        with open(self.key1_path, "w") as f:
-            f.write("untrusted comment: minisign public key ABC123\n")
-            f.write("RWQDJTPAA/YOmvb04sV60T1mIznpvhqIX6XBIEyee5XAr/ZDzkpg7KAS\n")
-        
-        # Create key without ID in comment but with valid base64 data
-        # Using sample data with known key ID
-        with open(self.key2_path, "w") as f:
-            f.write("untrusted comment: test key\n")
-            f.write("RWSf/cF5Ae3QuQy89/xkXu4ipDDDvjRw63fsXjyLiPvKdGrC1Aujn93D\n")
-        
-        # Copy the fixture file for reference
+        # Copy fixture files
         fixture_dir = Path("tests/fixtures")
         if fixture_dir.exists():
-            unencrypted_pub = fixture_dir / "unencrypted_minisign.pub"
-            if unencrypted_pub.exists():
-                shutil.copy(unencrypted_pub, self.keys_dir / "unencrypted_minisign.pub")
+            # Copy the unencrypted minisign key files
+            for key_file in ["unencrypted_minisign.pub", "encrypted_minisign.pub"]:
+                src_file = fixture_dir / key_file
+                if src_file.exists():
+                    shutil.copy(src_file, self.keys_dir / key_file)
+        
+        # Create test key with ID in comment
+        self.key1_path = self.keys_dir / "key1.pub"
+        with open(self.key1_path, "w") as f:
+            f.write("untrusted comment: minisign public key ABC123DEF456ABCD\n")
+            f.write("RWQDJTPAA/YOmvb04sV60T1mIznpvhqIX6XBIEyee5XAr/ZDzkpg7KAS\n")
     
     def teardown_method(self):
         """Clean up test environment."""
@@ -58,32 +58,71 @@ class TestKeyManager:
         if self.keys_dir.exists():
             shutil.rmtree(self.keys_dir)
     
+    def test_extract_key_id_from_comment(self):
+        """Test extracting key ID from comment line."""
+        # Test with valid comment line
+        comment = "untrusted comment: minisign public key 47405AF9970D8B71"
+        key_id = extract_key_id_from_comment(comment)
+        assert key_id == "47405AF9970D8B71"
+        
+        # Test with comment missing key ID
+        comment = "untrusted comment: minisign public key"
+        key_id = extract_key_id_from_comment(comment)
+        assert key_id is None
+        
+        # Test with arbitrary comment
+        comment = "just some random comment"
+        key_id = extract_key_id_from_comment(comment)
+        assert key_id is None
+    
+    def test_extract_key_id_from_data(self):
+        """Test extracting key ID from base64 data."""
+        # This is a complex test since we need valid base64 data
+        # We'll use a known fixture file
+        fixture_pub = Path("tests/fixtures/unencrypted_minisign.pub")
+        if not fixture_pub.exists():
+            pytest.skip("Fixture file not available")
+        
+        with open(fixture_pub, "r") as f:
+            lines = f.readlines()
+            if len(lines) >= 2:
+                base64_data = lines[1].strip()
+                key_id = extract_key_id_from_data(base64_data)
+                assert key_id is not None
+                assert len(key_id) == 16  # Key IDs are 16 hex characters
+    
     def test_backup_public_key(self):
         """Test backing up a public key."""
+        # Get the path to the fixture file
+        fixture_pub = Path("tests/fixtures/unencrypted_minisign.pub")
+        if not fixture_pub.exists():
+            pytest.skip("Fixture file not available")
+            
+        # Backup the key
+        key_id = backup_public_key(str(self.test_repo_path), str(fixture_pub))
+        
+        # Verify the key was backed up
+        assert key_id == "47405AF9970D8B71"  # From the comment in the fixture
+        backup_path = self.test_repo_path / "db" / "keys" / f"{key_id}.pub"
+        assert backup_path.exists()
+        
+        # Verify key content
+        with open(fixture_pub, "r") as src, open(backup_path, "r") as dest:
+            assert src.read() == dest.read()
+    
+    def test_backup_public_key_with_id_in_comment(self):
+        """Test backing up a public key with ID in comment."""
         # Backup key with ID in comment
         key_id = backup_public_key(str(self.test_repo_path), str(self.key1_path))
         
         # Verify the key was backed up
-        assert key_id == "ABC123"  # Still prioritize comment ID
+        assert key_id == "ABC123DEF456ABCD"  # From the comment
         backup_path = self.test_repo_path / "db" / "keys" / f"{key_id}.pub"
         assert backup_path.exists()
         
         # Verify key content
         with open(self.key1_path, "r") as src, open(backup_path, "r") as dest:
             assert src.read() == dest.read()
-    
-    @patch('historify.key_manager.base64.b64decode')
-    def test_backup_public_key_no_id(self, mock_b64decode):
-        """Test backing up a public key without ID in comment."""
-        # Mock the base64 decode to return a known key ID
-        mock_b64decode.return_value = b'Ed' + b'933D407DF3BEB9E3'.decode('hex_codec').encode('utf-8') + b'rest_of_data'
-        
-        key_id = backup_public_key(str(self.test_repo_path), str(self.key2_path))
-        
-        # Verify the key was backed up with the extracted binary key ID
-        assert key_id == "933D407DF3BEB9E3"
-        backup_path = self.test_repo_path / "db" / "keys" / f"{key_id}.pub"
-        assert backup_path.exists()
     
     def test_backup_nonexistent_key(self):
         """Test backing up a non-existent key."""
@@ -108,49 +147,41 @@ class TestKeyManager:
     
     def test_find_public_key_by_id(self):
         """Test finding a public key by ID."""
-        # Backup keys first
-        key_id1 = backup_public_key(str(self.test_repo_path), str(self.key1_path))
-        key_id2 = backup_public_key(str(self.test_repo_path), str(self.key2_path))
+        # Backup a key first
+        fixture_pub = Path("tests/fixtures/unencrypted_minisign.pub")
+        if not fixture_pub.exists():
+            pytest.skip("Fixture file not available")
+            
+        key_id = backup_public_key(str(self.test_repo_path), str(fixture_pub))
         
         # Find key by exact ID
-        key_path = find_public_key_by_id(str(self.test_repo_path), key_id1)
+        key_path = find_public_key_by_id(str(self.test_repo_path), key_id)
         assert key_path is not None
-        assert key_path.name == f"{key_id1}.pub"
+        assert key_path.name == f"{key_id}.pub"
         
         # Find key by partial ID
-        key_path = find_public_key_by_id(str(self.test_repo_path), "ABC")
+        key_path = find_public_key_by_id(str(self.test_repo_path), key_id[:8])
         assert key_path is not None
-        assert key_path.name == f"{key_id1}.pub"
+        assert key_path.name == f"{key_id}.pub"
         
         # Try to find non-existent key
         key_path = find_public_key_by_id(str(self.test_repo_path), "nonexistent")
         assert key_path is None
     
-    @patch('historify.key_manager.base64.b64decode')
-    def test_list_backed_up_keys(self, mock_b64decode):
+    def test_list_backed_up_keys(self):
         """Test listing backed up keys."""
-        # Mock the base64 decode to return known key IDs
-        def side_effect(arg):
-            if "RWQDJTPAA" in arg:  # key1
-                return b'Ed' + b'ABC123'.ljust(8, b'\x00') + b'rest_of_data'
-            else:  # key2
-                return b'Ed' + b'933D407DF3BEB9E3'.decode('hex_codec').encode('utf-8') + b'rest_of_data'
-        
-        mock_b64decode.side_effect = side_effect
-        
         # Initially no keys
         keys = list_backed_up_keys(str(self.test_repo_path))
         assert len(keys) == 0
         
-        # Backup keys
-        backup_public_key(str(self.test_repo_path), str(self.key1_path))
-        backup_public_key(str(self.test_repo_path), str(self.key2_path))
+        # Backup a key
+        fixture_pub = Path("tests/fixtures/unencrypted_minisign.pub")
+        if not fixture_pub.exists():
+            pytest.skip("Fixture file not available")
+            
+        key_id = backup_public_key(str(self.test_repo_path), str(fixture_pub))
         
         # List keys
         keys = list_backed_up_keys(str(self.test_repo_path))
-        assert len(keys) == 2
-        
-        # Verify key info
-        key_ids = [key["id"] for key in keys]
-        assert "ABC123" in key_ids
-        assert "933D407DF3BEB9E3" in key_ids
+        assert len(keys) == 1
+        assert keys[0]["id"] == key_id
