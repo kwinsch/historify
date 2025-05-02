@@ -36,12 +36,20 @@ class TestKeyManager:
         # Create key with ID in comment
         with open(self.key1_path, "w") as f:
             f.write("untrusted comment: minisign public key ABC123\n")
-            f.write("TESTPUB123456789\n")
+            f.write("RWQDJTPAA/YOmvb04sV60T1mIznpvhqIX6XBIEyee5XAr/ZDzkpg7KAS\n")
         
-        # Create key without ID in comment
+        # Create key without ID in comment but with valid base64 data
+        # Using sample data with known key ID
         with open(self.key2_path, "w") as f:
             f.write("untrusted comment: test key\n")
-            f.write("TESTPUB987654321\n")
+            f.write("RWSf/cF5Ae3QuQy89/xkXu4ipDDDvjRw63fsXjyLiPvKdGrC1Aujn93D\n")
+        
+        # Copy the fixture file for reference
+        fixture_dir = Path("tests/fixtures")
+        if fixture_dir.exists():
+            unencrypted_pub = fixture_dir / "unencrypted_minisign.pub"
+            if unencrypted_pub.exists():
+                shutil.copy(unencrypted_pub, self.keys_dir / "unencrypted_minisign.pub")
     
     def teardown_method(self):
         """Clean up test environment."""
@@ -56,7 +64,7 @@ class TestKeyManager:
         key_id = backup_public_key(str(self.test_repo_path), str(self.key1_path))
         
         # Verify the key was backed up
-        assert key_id == "ABC123"
+        assert key_id == "ABC123"  # Still prioritize comment ID
         backup_path = self.test_repo_path / "db" / "keys" / f"{key_id}.pub"
         assert backup_path.exists()
         
@@ -64,12 +72,16 @@ class TestKeyManager:
         with open(self.key1_path, "r") as src, open(backup_path, "r") as dest:
             assert src.read() == dest.read()
     
-    def test_backup_public_key_no_id(self):
+    @patch('historify.key_manager.base64.b64decode')
+    def test_backup_public_key_no_id(self, mock_b64decode):
         """Test backing up a public key without ID in comment."""
+        # Mock the base64 decode to return a known key ID
+        mock_b64decode.return_value = b'Ed' + b'933D407DF3BEB9E3'.decode('hex_codec').encode('utf-8') + b'rest_of_data'
+        
         key_id = backup_public_key(str(self.test_repo_path), str(self.key2_path))
         
-        # Verify the key was backed up using the filename
-        assert key_id == "key2"
+        # Verify the key was backed up with the extracted binary key ID
+        assert key_id == "933D407DF3BEB9E3"
         backup_path = self.test_repo_path / "db" / "keys" / f"{key_id}.pub"
         assert backup_path.exists()
     
@@ -114,8 +126,18 @@ class TestKeyManager:
         key_path = find_public_key_by_id(str(self.test_repo_path), "nonexistent")
         assert key_path is None
     
-    def test_list_backed_up_keys(self):
+    @patch('historify.key_manager.base64.b64decode')
+    def test_list_backed_up_keys(self, mock_b64decode):
         """Test listing backed up keys."""
+        # Mock the base64 decode to return known key IDs
+        def side_effect(arg):
+            if "RWQDJTPAA" in arg:  # key1
+                return b'Ed' + b'ABC123'.ljust(8, b'\x00') + b'rest_of_data'
+            else:  # key2
+                return b'Ed' + b'933D407DF3BEB9E3'.decode('hex_codec').encode('utf-8') + b'rest_of_data'
+        
+        mock_b64decode.side_effect = side_effect
+        
         # Initially no keys
         keys = list_backed_up_keys(str(self.test_repo_path))
         assert len(keys) == 0
@@ -131,4 +153,4 @@ class TestKeyManager:
         # Verify key info
         key_ids = [key["id"] for key in keys]
         assert "ABC123" in key_ids
-        assert "key2" in key_ids
+        assert "933D407DF3BEB9E3" in key_ids

@@ -6,6 +6,7 @@ import sys
 import logging
 import shutil
 import re
+import base64
 from pathlib import Path
 from typing import Optional, List, Dict
 
@@ -41,26 +42,45 @@ def backup_public_key(repo_path: str, public_key_path: str) -> Optional[str]:
         keys_dir = repo_path / "db" / "keys"
         keys_dir.mkdir(parents=True, exist_ok=True)
         
-        # Extract the key ID from the first line
-        key_id = None
-        key_content = ""
+        # Read the public key file
         with open(public_key_path, "r") as f:
-            key_content = f.read()
-            first_line = key_content.splitlines()[0].strip()
+            lines = f.readlines()
             
-            # Extract the key ID from the comment line
-            # Format is usually: "untrusted comment: minisign public key KEYID"
+        if len(lines) < 2:
+            raise KeyError("Invalid public key format: file too short")
+            
+        # Extract the key ID from the base64 blob (primary method)
+        # Format is base64(<signature_algorithm> || <key_id> || <public_key>)
+        key_id = None
+        try:
+            # Get the second line (base64 data) and decode it
+            b64_data = lines[1].strip()
+            raw_data = base64.b64decode(b64_data)
+            
+            # The key ID is 8 bytes starting at index 2 (after 'Ed')
+            if len(raw_data) >= 10:  # 2 bytes for 'Ed' + 8 bytes for key ID
+                # Extract the key ID bytes and convert to hex
+                key_id_bytes = raw_data[2:10]
+                key_id = key_id_bytes.hex().upper()
+                logger.debug(f"Extracted key ID from binary data: {key_id}")
+        except Exception as e:
+            logger.warning(f"Could not extract key ID from binary data: {e}")
+            
+        # If base64 extraction failed, try to extract from the comment line (fallback method)
+        if not key_id:
+            first_line = lines[0].strip()
             if "public key" in first_line:
-                # Try to extract the actual key ID that follows "public key"
                 match = re.search(r"public key\s+(\w+)", first_line)
                 if match:
                     key_id = match.group(1)
+                    logger.debug(f"Extracted key ID from comment: {key_id}")
             
-            # If key ID couldn't be extracted, use the filename
-            if not key_id:
-                key_id = public_key_path.stem
+        # If we still don't have a key ID, use the filename (last resort fallback)
+        if not key_id:
+            key_id = public_key_path.stem
+            logger.debug(f"Using filename as key ID: {key_id}")
         
-        logger.debug(f"Extracted key ID: {key_id} from public key file")
+        logger.debug(f"Final key ID: {key_id}")
         
         # Create the target file path
         target_path = keys_dir / f"{key_id}.pub"
@@ -68,8 +88,8 @@ def backup_public_key(repo_path: str, public_key_path: str) -> Optional[str]:
         # If the key already exists with the same content, no need to copy
         if target_path.exists():
             with open(target_path, "r") as existing_file:
-                existing_content = existing_file.read()
-                if key_content == existing_content:
+                existing_content = ''.join(existing_file.readlines())
+                if ''.join(lines) == existing_content:
                     logger.debug(f"Key {key_id} already backed up with identical content")
                     return key_id
         
