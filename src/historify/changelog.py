@@ -316,6 +316,31 @@ class Changelog:
             
         except CSVError as e:
             raise ChangelogError(f"Failed to write comment: {e}")
+            
+    def log_action(self, action: str, details: str = None) -> bool:
+        """
+        Log an action as a comment in the changelog.
+        This is a helper method for system actions that should be documented.
+        
+        Args:
+            action: Short action description (e.g., "Verify", "Snapshot")
+            details: Optional additional details about the action
+            
+        Returns:
+            True if the comment was written successfully, False if it fails or
+            if there's no open changelog (will not raise an exception).
+        """
+        try:
+            message = f"System: {action}"
+            if details:
+                message += f" - {details}"
+                
+            return self.write_comment(message)
+        except ChangelogError as e:
+            # Just log the error but don't raise an exception
+            # This ensures the main command can still complete even if logging fails
+            logger.warning(f"Failed to log action '{action}': {e}")
+            return False
     
     def start_closing(self, password: Optional[str] = None) -> Tuple[bool, str]:
         """

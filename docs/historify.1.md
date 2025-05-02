@@ -57,7 +57,7 @@ A historify repository contains:
 : Display change history from logs. By default, shows the current log. The `--file` option can specify a different changelog, and `--category` filters by category.
 
 **comment** *message* [*repo_path*]
-: Add an administrative comment to the change log. Useful for documenting important events or changes. Logs a `comment`  with the specified message.
+: Add an administrative comment to the change log. Useful for documenting important events or changes. Logs a `comment`  with the specified message. In addition to explicit user comments, Historify automatically logs key system activities (like verify and snapshot operations) as comments for better auditing and traceability.
 
 **snapshot** *output_dir* [*repo_path*] [`--name` *name*] [`--full`] [`--media`]
 : Create a compressed archive (tar.gz) of the current repository state for archiving purposes. Saves files to *output_dir* with automatically generated filenames that include the current date. The base name can be customized with `--name` (defaults to repository name). Filenames will be sanitized to use only alphanumeric characters and hyphens. Includes all data files, change logs, seed, signatures, and configuration directly residing under the repo path. If `--full` is specified, all external data files and folders referenced by the repository are backed up as separate tar.gz archives in the same output directory. If `--media` is specified, the tar.gz files are packed in ISO files with UDF 2.60 filesystem, ready to be burned to single layer BD-R disks (25GB). Other media types are currently not supported. If the content exceeds the expected media size, the archives are split into multiple ISO files.
@@ -108,7 +108,7 @@ Historify uses the following transaction types to track changes:
 - `deleted`: A file that no longer exists in the category
 - `closing`: Administrative transaction that links changelogs in a chain
 - `config`: Configuration change
-- `comment`: User-added comment
+- `comment`: User-added comment (includes both user comments and system-generated action logs)
 - `verify`: Verification operation
 
 ## INTEGRITY VERIFICATION

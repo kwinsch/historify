@@ -589,6 +589,16 @@ def handle_verify_command(repo_path: str, full_chain: bool = False) -> Tuple[boo
             success, issues = verify_full_chain(str(repo_path))
         else:
             success, issues = verify_recent_logs(str(repo_path))
+            
+        # Log the verification action in the changelog
+        try:
+            changelog = Changelog(str(repo_path))
+            verification_type = "full chain" if full_chain else "recent logs"
+            details = f"{'Successfully verified' if success else 'Verification issues found'}, {len(issues)} issues"
+            changelog.log_action(f"Verify {verification_type}", details)
+        except Exception as e:
+            # Just log this but don't alter the function's behavior
+            logger.warning(f"Failed to log verification action: {e}")
         
         return success, issues
         

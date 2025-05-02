@@ -202,6 +202,9 @@ def handle_snapshot_command(output_dir: str, repo_path: str, name: Optional[str]
         if success:
             click.echo(f"Snapshot created successfully: {main_archive_path}")
             
+            # Count files created for logging
+            archive_count = 1  # Main archive always exists
+            
             if full:
                 # List all category archives that were created
                 category_archives = list(output_dir.glob(f"{base_filename}-*.tar.gz"))
@@ -210,7 +213,9 @@ def handle_snapshot_command(output_dir: str, repo_path: str, name: Optional[str]
                     for archive in category_archives:
                         if archive.name != main_archive_path.name:
                             click.echo(f"  - {archive.name}")
+                    archive_count += len(category_archives)
             
+            iso_count = 0
             if media:
                 # Look for ISO files that were created
                 iso_files = list(output_dir.glob(f"{base_filename}*.iso"))
@@ -218,6 +223,26 @@ def handle_snapshot_command(output_dir: str, repo_path: str, name: Optional[str]
                     click.echo("Media image files created:")
                     for iso_file in iso_files:
                         click.echo(f"  - {iso_file.name}")
+                    iso_count = len(iso_files)
+            
+            # Log the snapshot action in the changelog
+            try:
+                from historify.changelog import Changelog
+                changelog = Changelog(str(repo_path))
+                
+                snapshot_type = []
+                if full:
+                    snapshot_type.append("full")
+                if media:
+                    snapshot_type.append("media")
+                
+                type_str = " ".join(snapshot_type) if snapshot_type else "basic"
+                details = f"{archive_count} archive(s), {iso_count} ISO(s), '{base_filename}' to {output_dir}"
+                
+                changelog.log_action(f"Snapshot {type_str}", details)
+            except Exception as e:
+                # Just log this but don't alter the function's behavior
+                logger.warning(f"Failed to log snapshot action: {e}")
         else:
             click.echo("Failed to create snapshot", err=True)
             raise click.Abort()
