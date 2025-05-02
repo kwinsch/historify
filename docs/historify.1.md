@@ -82,6 +82,7 @@ Historify's configuration controls repository behavior:
 - `minisign.key`: Path to minisign private key 
 - `minisign.pub`: Path to minisign public key
 - `changes.directory`: Directory for change logs (default: `changes`)
+- `iso.publisher`: Custom publisher name for ISO images (default: `historify archive`)
 
 All paths can be either relative or absolute.
 
@@ -289,6 +290,21 @@ historify config hash.algorithms "blake3,sha256,newhash" /path/to/repository
 ```
 
 Such changes will introduce an additional field in the output CSV in the future, while maintaining the order of the existing ones.
+
+## ISO Metadata
+
+When creating ISO images with the `--media` flag, Historify adds meaningful metadata to help identify the disc contents:
+
+- **Volume Identifier**: Contains the snapshot base name and date (e.g., `archive_2025-01-15`)
+- **System Identifier**: Set to "historify"
+- **Publisher**: Set to "historify archive" by default, but can be customized with the `iso.publisher` configuration option
+- **Preparer**: Contains "historify" and the creation date
+- **Application**: Points to the project's homepage "https://github.com/kwinsch/historify"
+
+To customize the ISO publisher information:
+```bash
+historify config iso.publisher "Your Company Name" /path/to/repository
+```
 
 ## SEE ALSO
 

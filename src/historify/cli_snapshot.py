@@ -119,8 +119,8 @@ def create_snapshot(repo_path: str, output_path: str, base_filename: str, verify
                 # Create base ISO path
                 iso_base_path = output_dir / f"{base_filename}"
                 
-                # Create ISO image(s) for BD-R
-                iso_files = pack_archives_for_media(all_archives, iso_base_path, media_type=media_type)
+                # Create ISO image(s) for BD-R with repository path for metadata
+                iso_files = pack_archives_for_media(all_archives, iso_base_path, media_type=media_type, repo_path=str(repo_path))
                 
                 if iso_files:
                     logger.info(f"Created {len(iso_files)} ISO image(s) for {media_type} media")

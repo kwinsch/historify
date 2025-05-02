@@ -10,7 +10,10 @@ import tempfile
 import shutil
 from pathlib import Path
 from typing import List, Optional, Tuple
+from datetime import datetime
 import pycdlib
+
+from historify.config import RepositoryConfig
 
 logger = logging.getLogger(__name__)
 
@@ -33,13 +36,14 @@ def calculate_archives_size(archives: List[Path]) -> int:
     """
     return sum(archive.stat().st_size for archive in archives if archive.exists())
 
-def create_iso_image(archives: List[Path], output_path: Path) -> Path:
+def create_iso_image(archives: List[Path], output_path: Path, repo_path: Optional[str] = None) -> Path:
     """
     Create an ISO image containing the archives.
     
     Args:
         archives: List of archives to include in the ISO.
         output_path: Base path for the output ISO file.
+        repo_path: Optional repository path to get configuration from.
         
     Returns:
         Path to the created ISO file.
@@ -52,11 +56,46 @@ def create_iso_image(archives: List[Path], output_path: Path) -> Path:
         # Add .iso extension to create the ISO path
         iso_path = output_path.with_suffix('.iso')
         
+        # Get a basic name from output_path for volume identification
+        vol_basename = output_path.stem
+        
+        # Get the current date for metadata
+        date_str = datetime.now().strftime('%Y-%m-%d')
+        
+        # ISO9660 volume identifiers are limited to 32 characters
+        # Try to fit both basename and date if possible
+        vol_ident = vol_basename
+        if len(vol_ident) > 26:  # Leave room for date and separator
+            vol_ident = vol_ident[:26]
+        vol_ident = f"{vol_ident}_{date_str}"
+        if len(vol_ident) > 32:  # Final safety check
+            vol_ident = vol_ident[:32]
+        
+        # Get publisher from config if available
+        publisher = "historify archive"
+        if repo_path:
+            try:
+                config = RepositoryConfig(repo_path)
+                pub = config.get("iso.publisher")
+                if pub:
+                    publisher = pub
+            except Exception as e:
+                logger.warning(f"Could not get publisher from config: {e}")
+        
         # Create a new ISO with UDF 2.60 (explicitly setting UDF version)
         iso = pycdlib.PyCdlib()
         
-        # Initialize with UDF 2.60 and explicitly disable ISO9660 restrictions
-        iso.new(udf="2.60", interchange_level=4, joliet=3)
+        # Initialize with UDF 2.60 and add proper metadata
+        iso.new(
+            udf="2.60",                      # UDF 2.60 for BD-R compatibility
+            interchange_level=4,             # Most permissive level for filenames
+            joliet=3,                        # Joliet level 3 for extended filename support
+            sys_ident="historify",           # System identifier (lowercase)
+            vol_ident=vol_ident,             # Volume identifier with basename and date
+            pub_ident_str=publisher,         # Publisher identifier from config or default
+            preparer_ident_str=f"historify {date_str}", # Preparer with date
+            app_ident_str="https://github.com/kwinsch/historify" # GitHub URL
+        )
         
         # Create a temporary directory for staging
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -125,13 +164,14 @@ def split_archives_for_media(archives: List[Path], media_capacity: int) -> List[
     
     return archive_groups
 
-def pack_for_bd_r(archives: List[Path], output_base_path: Path) -> List[Path]:
+def pack_for_bd_r(archives: List[Path], output_base_path: Path, repo_path: Optional[str] = None) -> List[Path]:
     """
     Pack archives for BD-R media.
     
     Args:
         archives: List of archives to pack.
         output_base_path: Base path for output ISO files.
+        repo_path: Optional repository path to get configuration from.
         
     Returns:
         List of paths to created ISO files.
@@ -145,7 +185,7 @@ def pack_for_bd_r(archives: List[Path], output_base_path: Path) -> List[Path]:
     # Check if all archives fit on a single BD-R
     if total_size <= BD_R_SINGLE_LAYER_CAPACITY:
         # Create a single ISO
-        iso_path = create_iso_image(archives, output_base_path)
+        iso_path = create_iso_image(archives, output_base_path, repo_path)
         return [iso_path]
     else:
         # Split archives into groups that fit on BD-R
@@ -158,12 +198,14 @@ def pack_for_bd_r(archives: List[Path], output_base_path: Path) -> List[Path]:
             # Create path with appropriate disc numbering
             # The output_base_path is now just the base filename without extension
             group_output = output_base_path.parent / f"{output_base_path.name}-disc{i}"
-            iso_path = create_iso_image(group, group_output)
+            iso_path = create_iso_image(group, group_output, repo_path)
             iso_paths.append(iso_path)
             
         return iso_paths
 
-def pack_archives_for_media(archives: List[Path], output_base_path: Path, media_type: str = "bd-r") -> List[Path]:
+def pack_archives_for_media(
+    archives: List[Path], output_base_path: Path, media_type: str = "bd-r", repo_path: Optional[str] = None
+) -> List[Path]:
     """
     Pack archives for the specified media type.
     
@@ -171,6 +213,7 @@ def pack_archives_for_media(archives: List[Path], output_base_path: Path, media_
         archives: List of archives to pack.
         output_base_path: Base path for output media files.
         media_type: Type of media to pack for (default: "bd-r").
+        repo_path: Optional repository path to get configuration from.
         
     Returns:
         List of paths to created media files.
@@ -189,6 +232,6 @@ def pack_archives_for_media(archives: List[Path], output_base_path: Path, media_
     
     # Handle different media types
     if media_type.lower() == "bd-r":
-        return pack_for_bd_r(archives, output_base_path)
+        return pack_for_bd_r(archives, output_base_path, repo_path)
     else:
         raise MediaPackError(f"Unsupported media type: {media_type}")

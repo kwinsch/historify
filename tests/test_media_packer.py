@@ -88,11 +88,17 @@ class TestMediaPacker:
         assert self.archive1 in groups3[2]  # Smallest (1000 bytes) in third group
     
     @patch('pycdlib.PyCdlib')
-    def test_create_iso_image(self, mock_pycdlib):
+    @patch('historify.media_packer.datetime')
+    def test_create_iso_image(self, mock_datetime, mock_pycdlib):
         """Test creating an ISO image."""
-        # Set up mock
+        # Set up mocks
         mock_iso = MagicMock()
         mock_pycdlib.return_value = mock_iso
+        
+        # Set fixed date for testing
+        mock_date = MagicMock()
+        mock_date.strftime.return_value = "2023-01-01"
+        mock_datetime.now.return_value = mock_date
         
         archives = [self.archive1, self.archive2]
         output_path = self.temp_path / "test_output"
@@ -104,8 +110,22 @@ class TestMediaPacker:
         # We expect output_path with .iso extension
         assert iso_path == output_path.with_suffix('.iso')
         
-        # Verify PyCdlib was used correctly - updated to match actual implementation
-        mock_iso.new.assert_called_once_with(udf="2.60", interchange_level=4, joliet=3)
+        # Verify PyCdlib was used correctly with new metadata parameters
+        mock_iso.new.assert_called_once()
+        
+        # Check that the key parameters were passed
+        call_args = mock_iso.new.call_args[1]
+        assert call_args['udf'] == "2.60"
+        assert call_args['interchange_level'] == 4
+        assert call_args['joliet'] == 3
+        assert call_args['sys_ident'] == "historify"
+        assert "test_output" in call_args['vol_ident']
+        assert "2023-01-01" in call_args['vol_ident']
+        assert call_args['pub_ident_str'] == "historify archive"
+        assert "historify" in call_args['preparer_ident_str'] 
+        assert "github.com/kwinsch/historify" in call_args['app_ident_str']
+        
+        # Check file operations
         assert mock_iso.add_file.call_count == 2  # Once for each archive
         expected_iso_path = output_path.with_suffix('.iso')
         mock_iso.write.assert_called_once_with(str(expected_iso_path))
@@ -123,13 +143,14 @@ class TestMediaPacker:
             
             archives = [self.archive1, self.archive2]
             output_base_path = self.temp_path / "output.tar.gz"
+            test_repo_path = "/test/repo/path"
             
             # Call the function
-            result = pack_for_bd_r(archives, output_base_path)
+            result = pack_for_bd_r(archives, output_base_path, test_repo_path)
             
             # Verify the result
             assert len(result) == 1  # One ISO created
-            mock_create_iso.assert_called_once_with(archives, output_base_path)
+            mock_create_iso.assert_called_once_with(archives, output_base_path, test_repo_path)
     
     @patch('historify.media_packer.create_iso_image')
     def test_pack_for_bd_r_multiple_discs(self, mock_create_iso):
@@ -153,9 +174,10 @@ class TestMediaPacker:
                 
                 archives = [self.archive1, self.archive2, self.archive3]
                 output_base_path = self.temp_path / "output.tar.gz"
+                test_repo_path = "/test/repo/path"
                 
                 # Call the function
-                result = pack_for_bd_r(archives, output_base_path)
+                result = pack_for_bd_r(archives, output_base_path, test_repo_path)
                 
                 # Verify the result
                 assert len(result) == 2  # Two ISOs created
@@ -167,11 +189,13 @@ class TestMediaPacker:
                 args1, _ = mock_create_iso.call_args_list[0]
                 assert args1[0] == [self.archive1]
                 assert "disc1" in str(args1[1])
+                assert args1[2] == test_repo_path
                 
                 # Second call should use the second group
                 args2, _ = mock_create_iso.call_args_list[1]
                 assert args2[0] == [self.archive2, self.archive3]
                 assert "disc2" in str(args2[1])
+                assert args2[2] == test_repo_path
     
     @patch('historify.media_packer.pack_for_bd_r')
     def test_pack_archives_for_media_bd_r(self, mock_pack_bd_r):
@@ -181,13 +205,16 @@ class TestMediaPacker:
         
         archives = [self.archive1, self.archive2]
         output_base_path = self.temp_path / "output.tar.gz"
+        test_repo_path = "/test/repo/path"
         
-        # Call with bd-r media type
-        result = pack_archives_for_media(archives, output_base_path, media_type="bd-r")
+        # Call with bd-r media type and repo path
+        result = pack_archives_for_media(
+            archives, output_base_path, media_type="bd-r", repo_path=test_repo_path
+        )
         
         # Verify the result
         assert len(result) == 1  # One ISO path returned
-        mock_pack_bd_r.assert_called_once_with(archives, output_base_path)
+        mock_pack_bd_r.assert_called_once_with(archives, output_base_path, test_repo_path)
     
     def test_pack_archives_for_media_unsupported(self):
         """Test packing archives with unsupported media type."""
