@@ -27,16 +27,16 @@ logger = logging.getLogger(__name__)
 @click.option("--verbose", "-v", is_flag=True, help="Enable verbose output")
 def cli(verbose):
     """
-    Historify: track file history with cryptographic integrity verification.
+    historify: track file history with cryptographic integrity verification.
     
-    Historify is a command-line tool for tracking file changes in a repository,
+    historify is a command-line tool for tracking file changes in a repository,
     logging changes with cryptographic hashes (BLAKE3 and SHA256), and securing
     logs with minisign signatures.
     """
     if verbose:
         logging.getLogger().setLevel(logging.DEBUG)
         click.echo("Verbose mode enabled")
-    logger.debug("Historify CLI starting")
+    logger.debug("historify CLI starting")
 
 @cli.command()
 @click.argument("repo_path", type=click.Path())

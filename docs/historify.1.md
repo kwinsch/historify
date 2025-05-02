@@ -1,4 +1,4 @@
-# HISTORIFY(1) Manual Page
+# historify(1) Manual Page
 
 ## NAME
 historify - track file history with cryptographic integrity verification
@@ -7,9 +7,9 @@ historify - track file history with cryptographic integrity verification
 `historify` *command* [*options*] [*arguments*]
 
 ## DESCRIPTION
-**Historify** is a command-line tool for tracking file changes in a repository, logging changes with cryptographic hashes (BLAKE3 and SHA256), and securing logs with `minisign` signatures. It ensures data authenticity and auditability through automated signing and verification, supporting multiple repositories and logical categorization of data.
+**historify** is a command-line tool for tracking file changes in a repository, logging changes with cryptographic hashes (BLAKE3 and SHA256), and securing logs with `minisign` signatures. It ensures data authenticity and auditability through automated signing and verification, supporting multiple repositories and logical categorization of data.
 
-Historify is designed for secure tracking of files that require a high level of integrity protection, such as critical documents, scientific data, or any materials that should remain tamper-evident.
+historify is designed for secure tracking of files that require a high level of integrity protection, such as critical documents, scientific data, or any materials that should remain tamper-evident.
 
 ## REPOSITORY STRUCTURE
 A historify repository contains:
@@ -57,7 +57,7 @@ A historify repository contains:
 : Display change history from logs. By default, shows the current log. The `--file` option can specify a different changelog, and `--category` filters by category.
 
 **comment** *message* [*repo_path*]
-: Add an administrative comment to the change log. Useful for documenting important events or changes. Logs a `comment`  with the specified message. In addition to explicit user comments, Historify automatically logs key system activities (like verify and snapshot operations) as comments for better auditing and traceability.
+: Add an administrative comment to the change log. Useful for documenting important events or changes. Logs a `comment`  with the specified message. In addition to explicit user comments, historify automatically logs key system activities (like verify and snapshot operations) as comments for better auditing and traceability.
 
 **snapshot** *output_dir* [*repo_path*] [`--name` *name*] [`--full`] [`--media`]
 : Create a compressed archive (tar.gz) of the current repository state for archiving purposes. Saves files to *output_dir* with automatically generated filenames that include the current date. The base name can be customized with `--name` (defaults to repository name). Filenames will be sanitized to use only alphanumeric characters and hyphens. Includes all data files, change logs, seed, signatures, and configuration directly residing under the repo path. If `--full` is specified, all external data files and folders referenced by the repository are backed up as separate tar.gz archives in the same output directory. If `--media` is specified, the tar.gz files are packed in ISO files with UDF 2.60 filesystem, ready to be burned to single layer BD-R disks (25GB). Other media types are currently not supported. If the content exceeds the expected media size, the archives are split into multiple ISO files.
@@ -74,7 +74,7 @@ A historify repository contains:
 : Specify a particular change log file for operations (with `log` command).
 
 ## CONFIGURATION
-Historify's configuration controls repository behavior:
+historify's configuration controls repository behavior:
 
 - `category.<name>.path`: Path for a specific data category
 - `category.<name>.description`: Optional description for the category
@@ -100,7 +100,7 @@ Duplicate files are not marked specifically in the changelog. Use the `duplicate
 
 ## TRANSACTION TYPES
 
-Historify uses the following transaction types to track changes:
+historify uses the following transaction types to track changes:
 
 - `new`: A file that appears for the first time in a category
 - `changed`: A file that has been modified (content changes)
@@ -113,7 +113,7 @@ Historify uses the following transaction types to track changes:
 
 ## INTEGRITY VERIFICATION
 
-Historify provides two levels of integrity verification:
+historify provides two levels of integrity verification:
 
 1. **File Integrity**: Verifies that tracked files have not been modified since their last scan by comparing current hashes with stored hashes.
 
@@ -135,9 +135,9 @@ This allows for organizing different types of data (e.g., documents, source code
 ## ENVIRONMENT
 
 `HISTORIFY_PASSWORD`
-: Password for encrypted minisign key. If this environment variable is set, Historify will use it for signing operations instead of prompting for a password at the command line. This is useful for automated scripts and batch operations. If the key is not encrypted, this variable is ignored.
+: Password for encrypted minisign key. If this environment variable is set, historify will use it for signing operations instead of prompting for a password at the command line. This is useful for automated scripts and batch operations. If the key is not encrypted, this variable is ignored.
 
-Historify relies on these external tools:
+historify relies on these external tools:
 - `minisign`: For signing and verification
 - `b3sum`: For BLAKE3 hashing (if native implementation is not available)
 
@@ -293,7 +293,7 @@ Such changes will introduce an additional field in the output CSV in the future,
 
 ## ISO Metadata
 
-When creating ISO images with the `--media` flag, Historify adds meaningful metadata to help identify the disc contents:
+When creating ISO images with the `--media` flag, historify adds meaningful metadata to help identify the disc contents:
 
 - **Volume Identifier**: Contains the snapshot base name and date (e.g., `archive_2025-01-15`)
 - **System Identifier**: Set to "historify"
