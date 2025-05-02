@@ -1,6 +1,6 @@
 [project]
 name = "historify"
-version = "0.1.4"
+version = "0.1.5"
 description = "A tool for revision-safe logging of file changes"
 authors = [
     {name = "Kevin Bortis", email = "kevin@bortis.ch"}

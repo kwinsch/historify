@@ -1,3 +1,4 @@
+# src/historify/cli_snapshot.py
 """
 Implementation of the snapshot command for historify.
 """
@@ -144,7 +145,7 @@ def create_snapshot(repo_path: str, output_path: str, verify_first: bool = True,
                 pass
         raise SnapshotError(f"Failed to create snapshot: {e}")
 
-def handle_snapshot_command(output_path: str, repo_path: str, full: bool = False, media: Optional[str] = None) -> None:
+def handle_snapshot_command(output_path: str, repo_path: str, full: bool = False, media = False) -> None:
     """
     Handle the snapshot command from the CLI.
     

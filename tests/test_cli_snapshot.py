@@ -1,3 +1,4 @@
+# tests/test_cli_snapshot.py
 """
 Tests for the snapshot command implementation.
 """
