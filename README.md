@@ -1,10 +1,28 @@
-# Historify
+# historify
 
 A tool for revision-safe logging of file changes with cryptographic integrity verification.
 
 ## Overview
 
-Historify is a command-line utility that tracks file changes in one or multiple data directories while maintaining a secure and verifiable record of all modifications. It logs changes with cryptographic hashes (BLAKE3 and SHA256) and secures logs with minisign signatures, ensuring data authenticity and auditability.
+historify is a command-line utility that tracks file changes in one or multiple data directories while maintaining a secure and verifiable record of all modifications. It logs changes with cryptographic hashes (BLAKE3 and SHA256) and secures logs with minisign signatures, ensuring data authenticity and auditability.
+
+It's particularly well-suited for adding compliance and audit capabilities to cloud storage systems like Nextcloud, where cryptographic proof of file integrity is required for regulatory purposes.
+
+### What historify IS
+
+- A cryptographic audit trail for file changes
+- A tamper-evident logging system
+- A compliance tool for proving file integrity
+- A complement to existing storage and backup systems
+
+### What historify is NOT
+
+- **Not a version control system** like Git (no branching, merging, code-focused features)
+- **Not a protection mechanism** that prevents files from being altered
+- **Not a backup solution** (though it can create snapshots)
+- **Not a replacement for access controls** (such as those in Nextcloud or filesystem permissions)
+
+historify detects and logs changes but cannot prevent them. It provides evidence of what has changed and when, but relies on other systems for access control and protection.
 
 ### Key Features
 
@@ -78,6 +96,8 @@ sudo chmod 700 /usr/local/bin/historify-scan
 
 For complete documentation on all commands, options, and repository structure, refer to the [manual page](docs/historify.1.md).
 
+For specific implementation scenarios and deployment patterns, see the [use cases guide](docs/use-cases.md).
+
 ### Common Commands
 
 | Command | Description |
@@ -94,7 +114,7 @@ For complete documentation on all commands, options, and repository structure, r
 
 ## Concepts
 
-Historify provides secure file tracking through:
+historify provides secure file tracking through:
 
 - **Automatic Change Detection**: Identifies new, changed, moved, and deleted files
 - **Cryptographic Hashing**: Uses BLAKE3 and SHA256 for reliable content verification
@@ -103,7 +123,7 @@ Historify provides secure file tracking through:
 
 ## Integrity Verification
 
-Historify combines file hashing and cryptographic signatures to create a tamper-evident chain of custody:
+historify combines file hashing and cryptographic signatures to create a tamper-evident chain of custody:
 
 - **File Integrity**: Verifies files against stored hash values
 - **Chain Verification**: Links changelogs through hash references
