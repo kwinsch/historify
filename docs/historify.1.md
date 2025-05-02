@@ -18,6 +18,7 @@ A historify repository contains:
 - `db/integrity.csv`: CSV database containing integrity verification information
 - `db/seed.bin`: Random seed file for integrity
 - `db/seed.bin.minisig`: Mandatory signature for seed
+- `db/keys/KEYID.pub`: Archived public keys where `KEYID` is used to uniqly identify the key and map it to the corresponding signature.I
 - `changes/`: Directory containing change logs
 - `changes/changelog-YYYY-MM-DD.csv`: Daily change logs
 - `changes/changelog-YYYY-MM-DD.csv.minisig`: Signature files for change logs. File created at closing event.
