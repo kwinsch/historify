@@ -194,8 +194,9 @@ class TestScanIntegration:
         result = self.runner.invoke(config, ["minisign.pub", str(pub_key_path), str(self.repo_path)])
         assert result.exit_code == 0
         
-        # Verify the backup_public_key was called
-        mock_backup.assert_called_once_with(str(self.repo_path), str(pub_key_path))
+        # Verify the backup_public_key was called with the absolute path to the repository
+        repo_abs_path = self.repo_path.resolve()
+        mock_backup.assert_called_once_with(str(repo_abs_path), str(pub_key_path))
         
         # Reset mock for next test
         mock_backup.reset_mock()
@@ -213,5 +214,5 @@ class TestScanIntegration:
         result = self.runner.invoke(config, ["minisign.pub", str(pub_key2_path), str(self.repo_path)])
         assert result.exit_code == 0
         
-        # Verify the backup_public_key was called again
-        mock_backup.assert_called_once_with(str(self.repo_path), str(pub_key2_path))
+        # Verify the backup_public_key was called again with the absolute path
+        mock_backup.assert_called_once_with(str(repo_abs_path), str(pub_key2_path))

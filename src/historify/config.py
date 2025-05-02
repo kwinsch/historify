@@ -137,6 +137,24 @@ class RepositoryConfig:
         
         section, option = parts
         
+        # Handle special case for minisign.pub - create keys directory
+        if key == "minisign.pub":
+            try:
+                # Ensure the db/keys directory exists
+                keys_dir = self.repo_path / "db" / "keys"
+                keys_dir.mkdir(parents=True, exist_ok=True)
+                
+                # Attempt to backup the key, but allow failure without stopping
+                try:
+                    from historify.key_manager import backup_public_key
+                    backup_public_key(str(self.repo_path), value)
+                except Exception as e:
+                    logger.warning(f"Failed to backup public key during config set: {e}")
+                    # Continue anyway, as this is not critical
+            except Exception as e:
+                logger.warning(f"Failed to create keys directory: {e}")
+                # Continue anyway, setting the config is still useful
+        
         # Update INI file
         if section not in self.config:
             self.config[section] = {}
